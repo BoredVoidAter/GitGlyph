@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GitGlyph</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <h1>GitGlyph</h1>
+        <button id="github-login">Login with GitHub</button>
+        <div id="repository-selection" style="display: none;">
+            <h2>Select a Repository</h2>
+            <select id="repo-select"></select>
+            <button id="generate-glyph">Generate Glyph</button>
+        </div>
+        <div id="glyph-visualization">
+            <h2>Your Glyph</h2>
+            <svg id="glyph-svg" width="800" height="600"></svg>
+        </div>
+    </div>
+    <script src="script.js"></script>
+</body>
+</html>
