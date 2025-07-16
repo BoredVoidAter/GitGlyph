@@ -4,10 +4,12 @@ from authlib.integrations.starlette_client import OAuth
 from dotenv import load_dotenv
 import os
 import httpx
+from starlette.middleware.sessions import SessionMiddleware
 
 load_dotenv()
 
 app = FastAPI()
+app.add_middleware(SessionMiddleware, secret_key=os.getenv("SESSION_SECRET_KEY"))
 
 oauth = OAuth()
 oauth.register(
