@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, Depends, Request
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import RedirectResponse, JSONResponse
 from authlib.integrations.starlette_client import OAuth
 from dotenv import load_dotenv
@@ -14,9 +14,6 @@ import uuid
 # NLP for commit intent analysis
 import nltk
 from nltk.sentiment import SentimentIntensityAnalyzer
-from nltk.tokenize import word_tokenize
-from nltk.corpus import stopwords
-import re
 
 # Download NLTK data (only needs to be run once)
 try:
@@ -231,6 +228,9 @@ async def get_commits(provider: str, owner: str, repo: str, request: Request, st
                     commit_details_response.raise_for_status()
                     commit_details = commit_details_response.json()
 
+                    total_additions = sum(f["additions"] for f in commit_details["files"])
+                    total_deletions = sum(f["deletions"] for f in commit_details["files"])
+
                     intent_data = analyze_commit_intent(commit["commit"]["message"])
 
                     all_commits.append({
@@ -240,6 +240,8 @@ async def get_commits(provider: str, owner: str, repo: str, request: Request, st
                         "date": commit["commit"]["author"]["date"],
                         "branch": branch_name,
                         "files": commit_details["files"],
+                        "total_additions": total_additions,
+                        "total_deletions": total_deletions,
                         "intent": intent_data["intent"],
                         "sentiment": intent_data["sentiment"]
                     })
@@ -287,6 +289,15 @@ class RepoDetails(BaseModel):
     owner: str
     repo: str
 
+class StoryAnnotation(BaseModel):
+    commit_sha: str
+    title: str
+    description: str
+    date: str
+
+# In-memory storage for story annotations
+story_annotations: Dict[str, List[StoryAnnotation]] = {} # glyph_id -> list of annotations
+
 @app.post("/api/team-commits")
 async def get_team_commits(request: Request, repos: List[RepoDetails], start_date: str = None, end_date: str = None):
     if "user" not in request.session:
@@ -321,6 +332,17 @@ async def get_team_commits(request: Request, repos: List[RepoDetails], start_dat
 shared_glyphs = {}
 glyph_gallery = [] # Stores metadata about shared glyphs for the gallery
 
+@app.post("/api/annotations/{glyph_id}")
+async def add_story_annotation(glyph_id: str, annotation: StoryAnnotation):
+    if glyph_id not in story_annotations:
+        story_annotations[glyph_id] = []
+    story_annotations[glyph_id].append(annotation)
+    return {"message": "Annotation added successfully", "annotation": annotation}
+
+@app.get("/api/annotations/{glyph_id}")
+async def get_story_annotations(glyph_id: str):
+    return story_annotations.get(glyph_id, [])
+
 @app.post("/api/share-glyph")
 async def share_glyph(request: Request):
     if "user" not in request.session:
@@ -329,12 +351,16 @@ async def share_glyph(request: Request):
     data = await request.json()
     glyph_data = data.get("glyph_data")
     metadata = data.get("metadata", {}) # Optional metadata for gallery
+    annotations = data.get("annotations", []) # New: Get annotations from frontend
     
     if not glyph_data:
         raise HTTPException(status_code=400, detail="No glyph data provided")
     
     share_id = str(uuid.uuid4())
     shared_glyphs[share_id] = glyph_data
+
+    # Store annotations with the shared glyph
+    story_annotations[share_id] = annotations
 
     # Add to gallery with some basic metadata
     gallery_entry = {
@@ -343,7 +369,7 @@ async def share_glyph(request: Request):
         "created_at": datetime.now().isoformat(),
         "complexity_score": metadata.get("complexity_score", 0), # Example metadata
         "commit_count": metadata.get("commit_count", 0),
-        "title": metadata.get("title", f"Glyph by {gallery_entry['user_id']}"),
+        "title": metadata.get("title", f"Glyph by {request.session["user_profile"].get("login") if request.session.get("provider") == "github" else request.session["user_profile"].get("username")}"),
         "description": metadata.get("description", "A unique visualization of commit history."),
         "tags": metadata.get("tags", []),
         "public": metadata.get("public", True) # Assume public by default for gallery
@@ -371,7 +397,9 @@ async def get_shared_glyph(share_id: str):
     glyph_data = shared_glyphs.get(share_id)
     if not glyph_data:
         raise HTTPException(status_code=404, detail="Glyph not found")
-    return glyph_data
+    
+    # Return glyph data and associated annotations
+    return {"glyph_data": glyph_data, "annotations": story_annotations.get(share_id, [])}
 
 @app.get("/embed/glyph/{share_id}")
 async def embed_glyph(share_id: str):
@@ -382,7 +410,7 @@ async def embed_glyph(share_id: str):
     # This endpoint would serve a minimal HTML page that loads the glyph visualization
     # For now, we'll just return the data, and the frontend will handle rendering in an iframe
     # In a real scenario, this would be a dedicated HTML page with minimal JS to render the glyph
-    return JSONResponse(content=glyph_data) # Or an HTMLResponse with embedded JS to render
+    return JSONResponse(content={"glyph_data": glyph_data, "annotations": story_annotations.get(share_id, [])}) # Or an HTMLResponse with embedded JS to render
 
 @app.get("/api/gallery")
 async def get_gallery(sort_by: str = "recent", filter_by_tag: str = None):
