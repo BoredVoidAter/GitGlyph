@@ -13,6 +13,24 @@ document.addEventListener('DOMContentLoaded', () => {
     const startDateInput = document.getElementById('start-date');
     const endDateInput = document.getElementById('end-date');
 
+    // Glyph Statistics elements
+    const statsPanel = document.getElementById('stats-panel');
+    const toggleStatsBtn = document.getElementById('toggle-stats-btn');
+    const totalCommitsSpan = document.getElementById('total-commits');
+    const busiestDaySpan = document.getElementById('busiest-day');
+    const topContributorsList = document.getElementById('top-contributors');
+    const commitCadenceList = document.getElementById('commit-cadence');
+    const commitIntentBreakdownList = document.getElementById('commit-intent-breakdown');
+
+    // Glyph Snapshot elements
+    const saveSnapshotBtn = document.getElementById('save-snapshot-btn');
+    const snapshotNameInput = document.getElementById('snapshot-name');
+    const snapshotDescriptionInput = document.getElementById('snapshot-description');
+    const snapshotsList = document.getElementById('snapshots-list');
+    const refreshGlyphBtn = document.getElementById('refresh-glyph-btn');
+
+    let currentGlyphData = null; // To store the current glyph's data for snapshots and refresh
+
     // Story Annotation elements
     const annotationCommitShaInput = document.getElementById('annotation-commit-sha');
     const annotationTitleInput = document.getElementById('annotation-title');
@@ -71,6 +89,37 @@ document.addEventListener('DOMContentLoaded', () => {
             listItem.appendChild(removeBtn);
             annotationsList.appendChild(listItem);
         });
+    }
+
+    toggleStatsBtn.addEventListener('click', () => {
+        statsPanel.classList.toggle('collapsed');
+    });
+
+    function updateGlyphStatistics(stats) {
+        totalCommitsSpan.textContent = stats.total_commits;
+        busiestDaySpan.textContent = stats.busiest_day;
+
+        topContributorsList.innerHTML = '';
+        for (const [contributor, count] of Object.entries(stats.top_contributors)) {
+            const li = document.createElement('li');
+            li.textContent = `${contributor}: ${count}`;
+            topContributorsList.appendChild(li);
+        }
+
+        commitCadenceList.innerHTML = '';
+        for (const [cadence, count] of Object.entries(stats.commit_cadence)) {
+            const li = document.createElement('li');
+            li.textContent = `${cadence}: ${count}`;
+            commitCadenceList.appendChild(li);
+        }
+
+        commitIntentBreakdownList.innerHTML = '';
+        for (const [intent, percentage] of Object.entries(stats.commit_intent_breakdown)) {
+            const li = document.createElement('li');
+            li.textContent = `${intent}: ${percentage.toFixed(2)}%`;
+            commitIntentBreakdownList.appendChild(li);
+        }
+        statsPanel.style.display = 'block'; // Ensure panel is visible when stats are updated
     }
 
     // Tab elements
@@ -226,9 +275,10 @@ document.addEventListener('DOMContentLoaded', () => {
             try {
                 const response = await fetch(url);
                 if (response.ok) {
-                    const commits = await response.json();
-                    console.log('Fetched commits:', commits);
-                    generateAndVisualizeGlyph(commits, selectedTheme);
+                    const commitsData = await response.json();
+                    console.log('Fetched commits:', commitsData.commits);
+                    localStorage.setItem('currentCommits', JSON.stringify(commitsData.commits)); // Store commits
+                    generateAndVisualizeGlyph(commitsData.commits, selectedTheme, storyAnnotations, commitsData.last_commit_sha);
                 } else {
                     console.error('Error fetching commits:', response.status);
                 }
@@ -244,7 +294,7 @@ document.addEventListener('DOMContentLoaded', () => {
         container.classList.add(`theme-${theme}`);
     }
 
-    function generateAndVisualizeGlyph(commits, theme, annotations = []) {
+    function generateAndVisualizeGlyph(commits, theme, annotations = [], lastCommitSha = null) {
         // Clear previous glyph
         glyphSvg.innerHTML = '';
 
@@ -259,6 +309,7 @@ document.addEventListener('DOMContentLoaded', () => {
             glyphSvg.appendChild(text);
             shareGlyphBtn.style.display = 'none';
             shareLinkDiv.style.display = 'none';
+            statsPanel.style.display = 'none'; // Hide stats panel if no commits
             return;
         }
 
@@ -269,6 +320,14 @@ document.addEventListener('DOMContentLoaded', () => {
         const centerX = svgWidth / 2;
         const centerY = svgHeight / 2;
         const maxRadius = Math.min(centerX, centerY) * 0.8;
+
+        // Store current glyph data for snapshots and refresh
+        currentGlyphData = {
+            commits: commits,
+            theme: theme,
+            annotations: annotations,
+            last_commit_sha: lastCommitSha
+        };
 
         // Sort commits by date to establish a timeline
         commits.sort((a, b) => new Date(a.date) - new Date(b.date));
@@ -481,6 +540,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
         shareGlyphBtn.style.display = 'block';
         shareLinkDiv.style.display = 'none';
+
+        // Fetch and display glyph statistics
+        const selectedRepo = repoSelect.value;
+        if (selectedRepo) {
+            const [provider, owner, repo] = selectedRepo.split('/');
+            const startDate = startDateInput.value;
+            const endDate = endDateInput.value;
+            fetchGlyphStatistics(provider, owner, repo, startDate, endDate);
+        }
     }
 
     shareGlyphBtn.addEventListener('click', async () => {
@@ -772,10 +840,10 @@ document.addEventListener('DOMContentLoaded', () => {
             });
 
             if (response.ok) {
-                const commits = await response.json();
-                localStorage.setItem('currentCommits', JSON.stringify(commits)); // Store commits
-                console.log('Fetched team commits:', commits);
-                generateAndVisualizeGlyph(commits, themeSelect.value, storyAnnotations);
+                const commitsData = await response.json();
+                localStorage.setItem('currentCommits', JSON.stringify(commitsData.commits)); // Store commits
+                console.log('Fetched team commits:', commitsData.commits);
+                generateAndVisualizeGlyph(commitsData.commits, themeSelect.value, storyAnnotations, commitsData.last_commit_sha);
             } else {
                 console.error('Error fetching team commits:', response.status);
             }
@@ -1085,6 +1153,39 @@ function renderStoryAnnotations(annotations, commits, centerX, centerY, maxRadiu
 
         shareGlyphBtn.style.display = 'block';
         shareLinkDiv.style.display = 'none';
+
+        // Fetch and display glyph statistics
+        const selectedRepo = repoSelect.value;
+        if (selectedRepo) {
+            const [provider, owner, repo] = selectedRepo.split('/');
+            const startDate = startDateInput.value;
+            const endDate = endDateInput.value;
+            fetchGlyphStatistics(provider, owner, repo, startDate, endDate);
+        }
+    }
+
+    async function fetchGlyphStatistics(provider, owner, repo, startDate, endDate) {
+        let url = `http://localhost:8000/api/glyph-statistics/${provider}/${owner}/${repo}`;
+        const queryParams = new URLSearchParams();
+        if (startDate) queryParams.append('start_date', startDate);
+        if (endDate) queryParams.append('end_date', endDate);
+        if (queryParams.toString()) {
+            url += `?${queryParams.toString()}`;
+        }
+
+        try {
+            const response = await fetch(url);
+            if (response.ok) {
+                const stats = await response.json();
+                updateGlyphStatistics(stats);
+            } else {
+                console.error('Error fetching glyph statistics:', response.status);
+                statsPanel.style.display = 'none';
+            }
+        } catch (error) {
+            console.error('Error:', error);
+            statsPanel.style.display = 'none';
+        }
     }
 
     shareGlyphBtn.addEventListener('click', async () => {
@@ -1377,10 +1478,10 @@ function renderStoryAnnotations(annotations, commits, centerX, centerY, maxRadiu
             });
 
             if (response.ok) {
-                const commits = await response.json();
-                localStorage.setItem('currentCommits', JSON.stringify(commits)); // Store commits
-                console.log('Fetched team commits:', commits);
-                generateAndVisualizeGlyph(commits, themeSelect.value, storyAnnotations);
+                const commitsData = await response.json();
+                localStorage.setItem('currentCommits', JSON.stringify(commitsData.commits)); // Store commits
+                console.log('Fetched team commits:', commitsData.commits);
+                generateAndVisualizeGlyph(commitsData.commits, themeSelect.value, storyAnnotations, commitsData.last_commit_sha);
             } else {
                 console.error('Error fetching team commits:', response.status);
             }

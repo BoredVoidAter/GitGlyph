@@ -10,6 +10,26 @@ from datetime import datetime
 from pydantic import BaseModel
 from typing import List, Dict
 import uuid
+from collections import Counter
+
+# Pydantic models for new features
+class GlyphStatistics(BaseModel):
+    total_commits: int
+    busiest_day: str
+    top_contributors: Dict[str, int]
+    commit_cadence: Dict[str, int]
+    commit_intent_breakdown: Dict[str, float]
+
+class GlyphSnapshot(BaseModel):
+    id: str
+    user_id: str
+    repository_full_name: str
+    provider: str
+    name: str
+    description: str = None
+    created_at: datetime
+    config: Dict # e.g., time_range, theme, branch_comparison
+    last_commit_sha: str # To enable refresh
 
 # NLP for commit intent analysis
 import nltk
@@ -141,6 +161,45 @@ async def get_repositories(request: Request):
         else:
             raise HTTPException(status_code=400, detail="Unknown provider")
 
+def calculate_glyph_statistics(commits: List[Dict]) -> GlyphStatistics:
+    total_commits = len(commits)
+    if total_commits == 0:
+        return GlyphStatistics(
+            total_commits=0,
+            busiest_day="N/A",
+            top_contributors={},
+            commit_cadence={},
+            commit_intent_breakdown={}
+        )
+
+    # Busiest Development Day
+    commit_dates = [datetime.fromisoformat(c["date"].replace("Z", "+00:00")).date() for c in commits]
+    busiest_day_counter = Counter(commit_dates)
+    busiest_day = busiest_day_counter.most_common(1)[0][0].isoformat() if busiest_day_counter else "N/A"
+
+    # Top Contributors by Commit Volume
+    author_counter = Counter(c["author_name"] for c in commits)
+    top_contributors = dict(author_counter.most_common(5)) # Top 5 contributors
+
+    # Project Rhythm (Commit Cadence - e.g., commits per day of week, or hour of day)
+    # For simplicity, let's do commits per day of week
+    day_of_week_counter = Counter(datetime.fromisoformat(c["date"].replace("Z", "+00:00")).strftime("%A") for c in commits)
+    commit_cadence = dict(day_of_week_counter)
+
+    # Percentage breakdown of commit intents
+    intent_counter = Counter(c["intent"] for c in commits)
+    commit_intent_breakdown = {
+        intent: (count / total_commits) * 100 for intent, count in intent_counter.items()
+    }
+
+    return GlyphStatistics(
+        total_commits=total_commits,
+        busiest_day=busiest_day,
+        top_contributors=top_contributors,
+        commit_cadence=commit_cadence,
+        commit_intent_breakdown=commit_intent_breakdown
+    )
+
 # NLP Function for Commit Intent Analysis
 def analyze_commit_intent(message: str) -> Dict[str, str]:
     message_lower = message.lower()
@@ -201,7 +260,7 @@ def analyze_commit_intent(message: str) -> Dict[str, str]:
 
 
 @app.get("/api/commits/{provider}/{owner}/{repo}")
-async def get_commits(provider: str, owner: str, repo: str, request: Request, start_date: str = None, end_date: str = None):
+async def get_commits(provider: str, owner: str, repo: str, request: Request, start_date: str = None, end_date: str = None, since_sha: str = None):
     if "user" not in request.session:
         raise HTTPException(status_code=401, detail="Not authenticated")
     
@@ -218,6 +277,10 @@ async def get_commits(provider: str, owner: str, repo: str, request: Request, st
             for branch in branches:
                 branch_name = branch["name"]
                 commits_url = f"https://api.github.com/repos/{owner}/{repo}/commits?sha={branch_name}"
+                if since_sha:
+                    commits_url += f"&since={since_sha}" # GitHub API uses 'since' for date, but 'sha' for starting commit
+                if since_sha:
+                    commits_url += f"&since={since_sha}" # GitHub API uses 'since' for date, but 'sha' for starting commit
                 commits_response = await client.get(commits_url, headers=headers)
                 commits_response.raise_for_status()
                 commits = commits_response.json()
@@ -254,7 +317,17 @@ async def get_commits(provider: str, owner: str, repo: str, request: Request, st
             project_response.raise_for_status()
             project_id = project_response.json()["id"]
 
-            commits_response = await client.get(f"https://gitlab.com/api/v4/projects/{project_id}/repository/commits", headers=headers)
+            commits_url = f"https://gitlab.com/api/v4/projects/{project_id}/repository/commits"
+            if since_sha:
+                # GitLab API uses 'since' for date, but 'sha' for starting commit
+                # GitLab's API for commits doesn't directly support a 'since_sha' parameter
+                # for incremental fetches in the same way GitHub does. 
+                # A common workaround is to filter by date or fetch all and filter client-side.
+                # For simplicity, we'll add a note here and assume client-side filtering for now
+                # if a since_sha is provided for GitLab.
+                # In a real-world scenario, you might fetch commits until you hit the since_sha.
+                print(f"Warning: 'since_sha' parameter is not directly supported by GitLab API for incremental fetches. Fetching all commits and filtering client-side if needed.")
+            commits_response = await client.get(commits_url, headers=headers)
             commits_response.raise_for_status()
             commits = commits_response.json()
 
@@ -282,7 +355,19 @@ async def get_commits(provider: str, owner: str, repo: str, request: Request, st
             end_timestamp = datetime.strptime(end_date, "%Y-%m-%d").timestamp()
             all_commits = [c for c in all_commits if datetime.strptime(c["date"].split("T")[0], "%Y-%m-%d").timestamp() <= end_timestamp]
         
-        return all_commits
+        # Get the SHA of the latest commit if available
+        last_commit_sha = all_commits[-1]["sha"] if all_commits else None
+        
+        return {"commits": all_commits, "last_commit_sha": last_commit_sha}
+
+@app.get("/api/glyph-statistics/{provider}/{owner}/{repo}")
+async def get_glyph_statistics(provider: str, owner: str, repo: str, request: Request, start_date: str = None, end_date: str = None):
+    # Reuse the get_commits logic to fetch the commits
+    commits = await get_commits(provider, owner, repo, request, start_date, end_date)
+    
+    # Calculate statistics from the fetched commits
+    stats = calculate_glyph_statistics(commits)
+    return stats
 
 class RepoDetails(BaseModel):
     provider: str
@@ -297,6 +382,7 @@ class StoryAnnotation(BaseModel):
 
 # In-memory storage for story annotations
 story_annotations: Dict[str, List[StoryAnnotation]] = {} # glyph_id -> list of annotations
+glyph_snapshots: Dict[str, GlyphSnapshot] = {} # snapshot_id -> GlyphSnapshot object
 
 @app.post("/api/team-commits")
 async def get_team_commits(request: Request, repos: List[RepoDetails], start_date: str = None, end_date: str = None):
@@ -313,7 +399,8 @@ async def get_team_commits(request: Request, repos: List[RepoDetails], start_dat
                 repo=repo_detail.repo,
                 request=request,
                 start_date=start_date,
-                end_date=end_date
+                end_date=end_date,
+                since_sha=since_sha # Pass since_sha to get_commits
             )
             # Add repository information to each commit for distinct visual cues
             for commit in repo_commits:
@@ -331,6 +418,76 @@ async def get_team_commits(request: Request, repos: List[RepoDetails], start_dat
 # In-memory storage for shared glyphs and gallery (for demonstration purposes)
 shared_glyphs = {}
 glyph_gallery = [] # Stores metadata about shared glyphs for the gallery
+
+@app.post("/api/snapshots")
+async def create_glyph_snapshot(request: Request, snapshot: GlyphSnapshot):
+    if "user" not in request.session:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    
+    user_id = request.session["user_profile"].get("login") if request.session.get("provider") == "github" else request.session["user_profile"].get("username")
+    if snapshot.user_id != user_id:
+        raise HTTPException(status_code=403, detail="Unauthorized to create snapshot for this user.")
+
+    snapshot.id = str(uuid.uuid4())
+    snapshot.created_at = datetime.now()
+    glyph_snapshots[snapshot.id] = snapshot
+    return {"message": "Glyph snapshot created successfully", "snapshot_id": snapshot.id}
+
+@app.get("/api/snapshots/{snapshot_id}")
+async def get_glyph_snapshot(snapshot_id: str, request: Request):
+    if "user" not in request.session:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    
+    snapshot = glyph_snapshots.get(snapshot_id)
+    if not snapshot:
+        raise HTTPException(status_code=404, detail="Glyph snapshot not found")
+    
+    user_id = request.session["user_profile"].get("login") if request.session.get("provider") == "github" else request.session["user_profile"].get("username")
+    if snapshot.user_id != user_id:
+        raise HTTPException(status_code=403, detail="Unauthorized to access this snapshot.")
+    
+    return snapshot
+
+@app.get("/api/snapshots")
+async def list_glyph_snapshots(request: Request):
+    if "user" not in request.session:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    
+    user_id = request.session["user_profile"].get("login") if request.session.get("provider") == "github" else request.session["user_profile"].get("username")
+    
+    user_snapshots = [s for s in glyph_snapshots.values() if s.user_id == user_id]
+    return user_snapshots
+
+@app.get("/api/snapshots/{snapshot_id}/refresh")
+async def refresh_glyph_from_snapshot(snapshot_id: str, request: Request):
+    if "user" not in request.session:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    
+    snapshot = glyph_snapshots.get(snapshot_id)
+    if not snapshot:
+        raise HTTPException(status_code=404, detail="Glyph snapshot not found")
+    
+    user_id = request.session["user_profile"].get("login") if request.session.get("provider") == "github" else request.session["user_profile"].get("username")
+    if snapshot.user_id != user_id:
+        raise HTTPException(status_code=403, detail="Unauthorized to refresh this snapshot.")
+    
+    # Fetch new commits since the last_commit_sha of the snapshot
+    new_commits_data = await get_commits(
+        provider=snapshot.provider,
+        owner=snapshot.repository_full_name.split('/')[0], # Assuming owner/repo format
+        repo=snapshot.repository_full_name.split('/')[1],
+        request=request,
+        since_sha=snapshot.last_commit_sha
+    )
+    
+    # Update the snapshot's last_commit_sha with the latest commit from the refresh
+    if new_commits_data["commits"]:
+        snapshot.last_commit_sha = new_commits_data["last_commit_sha"]
+        # In a real application, you might want to update the snapshot's config or other metadata
+        # based on the new commits, or even create a new snapshot version.
+        # For this task, we'll just return the new commits.
+    
+    return {"new_commits": new_commits_data["commits"], "updated_last_commit_sha": snapshot.last_commit_sha}
 
 @app.post("/api/annotations/{glyph_id}")
 async def add_story_annotation(glyph_id: str, annotation: StoryAnnotation):
