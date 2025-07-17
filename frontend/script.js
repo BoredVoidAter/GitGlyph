@@ -9,6 +9,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const shareGlyphBtn = document.getElementById('share-glyph');
     const shareLinkDiv = document.getElementById('share-link-div');
     const shareLink = document.getElementById('share-link');
+    const startDateInput = document.getElementById('start-date');
+    const endDateInput = document.getElementById('end-date');
 
     githubLoginBtn.addEventListener('click', () => {
         window.location.href = 'http://localhost:8000/login/github';
@@ -48,8 +50,17 @@ document.addEventListener('DOMContentLoaded', () => {
         const selectedTheme = themeSelect.value; // Get selected theme
         if (selectedRepo) {
             const [provider, owner, repo] = selectedRepo.split('/');
+            const startDate = startDateInput.value;
+            const endDate = endDateInput.value;
+            let url = `http://localhost:8000/api/commits/${provider}/${owner}/${repo}`;
+            if (startDate) {
+                url += `?start_date=${startDate}`;
+            }
+            if (endDate) {
+                url += `${startDate ? '&' : '?'}end_date=${endDate}`;
+            }
             try {
-                const response = await fetch(`http://localhost:8000/api/commits/${provider}/${owner}/${repo}`);
+                const response = await fetch(url);
                 if (response.ok) {
                     const commits = await response.json();
                     console.log('Fetched commits:', commits);
@@ -131,7 +142,15 @@ document.addEventListener('DOMContentLoaded', () => {
             circle.setAttribute("fill", commitColor); // Use contributor color
             circle.setAttribute("stroke", "#333");
             circle.setAttribute("stroke-width", "0.5");
+            circle.setAttribute("data-commit-sha", commit.sha);
+            circle.setAttribute("data-commit-message", commit.message);
+            circle.setAttribute("data-commit-author", commit.author_name);
+            circle.setAttribute("data-commit-date", new Date(commit.date).toLocaleString());
             glyphSvg.appendChild(circle);
+
+            // Add tooltip event listeners
+            circle.addEventListener('mouseover', showTooltip);
+            circle.addEventListener('mouseout', hideTooltip);
 
             // Optional: Add a line connecting commits (simple branch visualization)
             if (index > 0) {
@@ -195,6 +214,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (response.ok) {
                     const data = await response.json();
                     glyphSvg.innerHTML = data;
+                    // Re-attach event listeners for shared glyphs
+                    glyphSvg.querySelectorAll('circle').forEach(circle => {
+                        circle.addEventListener('mouseover', showTooltip);
+                        circle.addEventListener('mouseout', hideTooltip);
+                    });
                 } else {
                     console.error('Error fetching shared glyph:', response.status);
                     glyphSvg.innerHTML = '<text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" fill="#888">Glyph not found or expired.</text>';
@@ -205,5 +229,29 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
         fetchSharedGlyph();
+    }
+
+    // Tooltip functions
+    function showTooltip(event) {
+        const tooltip = document.getElementById('tooltip');
+        const commitSha = event.target.getAttribute('data-commit-sha');
+        const commitMessage = event.target.getAttribute('data-commit-message');
+        const commitAuthor = event.target.getAttribute('data-commit-author');
+        const commitDate = event.target.getAttribute('data-commit-date');
+
+        tooltip.innerHTML = `
+            <strong>SHA:</strong> ${commitSha.substring(0, 7)}<br>
+            <strong>Message:</strong> ${commitMessage}<br>
+            <strong>Author:</strong> ${commitAuthor}<br>
+            <strong>Date:</strong> ${commitDate}
+        `;
+        tooltip.style.display = 'block';
+        tooltip.style.left = `${event.pageX + 10}px`;
+        tooltip.style.top = `${event.pageY + 10}px`;
+    }
+
+    function hideTooltip() {
+        const tooltip = document.getElementById('tooltip');
+        tooltip.style.display = 'none';
     }
 });

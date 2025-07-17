@@ -6,6 +6,7 @@ import os
 import httpx
 from starlette.middleware.sessions import SessionMiddleware
 from starlette.middleware.cors import CORSMiddleware
+from datetime import datetime
 
 load_dotenv()
 
@@ -120,7 +121,7 @@ async def get_repositories(request: Request):
             raise HTTPException(status_code=400, detail="Unknown provider")
 
 @app.get("/api/commits/{provider}/{owner}/{repo}")
-async def get_commits(provider: str, owner: str, repo: str, request: Request):
+async def get_commits(provider: str, owner: str, repo: str, request: Request, start_date: str = None, end_date: str = None):
     if "user" not in request.session:
         raise HTTPException(status_code=401, detail="Not authenticated")
     
@@ -142,12 +143,18 @@ async def get_commits(provider: str, owner: str, repo: str, request: Request):
                 commits = commits_response.json()
                 
                 for commit in commits:
+                    commit_details_url = f"https://api.github.com/repos/{owner}/{repo}/commits/{commit["sha"]}"
+                    commit_details_response = await client.get(commit_details_url, headers=headers)
+                    commit_details_response.raise_for_status()
+                    commit_details = commit_details_response.json()
+
                     all_commits.append({
                         "sha": commit["sha"],
                         "message": commit["commit"]["message"],
                         "author_name": commit["commit"]["author"]["name"],
                         "date": commit["commit"]["author"]["date"],
-                        "branch": branch_name
+                        "branch": branch_name,
+                        "files": commit_details["files"]
                     })
         elif provider == "gitlab":
             headers = {"Authorization": f"Bearer {access_token}"}
@@ -174,6 +181,14 @@ async def get_commits(provider: str, owner: str, repo: str, request: Request):
             raise HTTPException(status_code=400, detail="Unknown provider")
         
         all_commits.sort(key=lambda x: x["date"])
+
+        # Filter by date range if provided
+        if start_date:
+            start_timestamp = datetime.strptime(start_date, "%Y-%m-%d").timestamp()
+            all_commits = [c for c in all_commits if datetime.strptime(c["date"].split("T")[0], "%Y-%m-%d").timestamp() >= start_timestamp]
+        if end_date:
+            end_timestamp = datetime.strptime(end_date, "%Y-%m-%d").timestamp()
+            all_commits = [c for c in all_commits if datetime.strptime(c["date"].split("T")[0], "%Y-%m-%d").timestamp() <= end_timestamp]
         
         return all_commits
 

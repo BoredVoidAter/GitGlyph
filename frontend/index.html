@@ -23,6 +23,12 @@
                     <option value="sunset">Sunset Orange</option>
                 </select>
             </div>
+            <div class="date-range-selection">
+                <label for="start-date">Start Date:</label>
+                <input type="date" id="start-date">
+                <label for="end-date">End Date:</label>
+                <input type="date" id="end-date">
+            </div>
             <button id="generate-glyph">Generate Glyph</button>
             <button id="share-glyph" style="display: none;">Share Glyph</button>
         </div>
@@ -32,6 +38,7 @@
         <div id="glyph-visualization">
             <h2>Your Glyph</h2>
             <svg id="glyph-svg" width="800" height="600"></svg>
+            <div id="tooltip" class="tooltip" style="display: none;"></div>
         </div>
     </div>
     <script src="script.js"></script>
