@@ -9,8 +9,45 @@ document.addEventListener('DOMContentLoaded', () => {
     const shareGlyphBtn = document.getElementById('share-glyph');
     const shareLinkDiv = document.getElementById('share-link-div');
     const shareLink = document.getElementById('share-link');
+    const embedSnippet = document.getElementById('embed-snippet');
     const startDateInput = document.getElementById('start-date');
     const endDateInput = document.getElementById('end-date');
+
+    // Tab elements
+    const tabButtons = document.querySelectorAll('.tab-button');
+    const tabContents = document.querySelectorAll('.tab-content');
+    const galleryTab = document.getElementById('gallery-tab');
+    const achievementsTab = document.getElementById('achievements-tab');
+    const gallerySort = document.getElementById('gallery-sort');
+    const galleryFilterTag = document.getElementById('gallery-filter-tag');
+    const applyGalleryFiltersBtn = document.getElementById('apply-gallery-filters');
+    const galleryList = document.getElementById('gallery-list');
+    const achievementsList = document.getElementById('achievements-list');
+
+    // Team Glyph elements
+    const addRepoToTeamBtn = document.getElementById('add-repo-to-team');
+    const teamRepoSelectionDiv = document.getElementById('team-repo-selection');
+    const selectedTeamReposList = document.getElementById('selected-team-repos');
+    const generateTeamGlyphBtn = document.getElementById('generate-team-glyph');
+
+    let selectedTeamRepos = [];
+
+    // Tab switching logic
+    tabButtons.forEach(button => {
+        button.addEventListener('click', () => {
+            tabButtons.forEach(btn => btn.classList.remove('active'));
+            tabContents.forEach(content => content.classList.remove('active'));
+
+            button.classList.add('active');
+            document.getElementById(`${button.dataset.tab}-tab`).classList.add('active');
+
+            if (button.dataset.tab === 'gallery') {
+                fetchGallery();
+            } else if (button.dataset.tab === 'achievements') {
+                fetchAchievements();
+            }
+        });
+    });
 
     githubLoginBtn.addEventListener('click', () => {
         window.location.href = 'http://localhost:8000/login/github';
@@ -45,6 +82,73 @@ document.addEventListener('DOMContentLoaded', () => {
 
     checkAuthAndFetchRepos();
 
+    addRepoToTeamBtn.addEventListener('click', () => {
+        const selectedRepo = repoSelect.value;
+        if (selectedRepo && !selectedTeamRepos.includes(selectedRepo)) {
+            selectedTeamRepos.push(selectedRepo);
+            renderSelectedTeamRepos();
+            teamRepoSelectionDiv.style.display = 'block';
+        }
+    });
+
+    function renderSelectedTeamRepos() {
+        selectedTeamReposList.innerHTML = '';
+        selectedTeamRepos.forEach(repo => {
+            const listItem = document.createElement('li');
+            listItem.textContent = repo;
+            const removeBtn = document.createElement('button');
+            removeBtn.textContent = 'Remove';
+            removeBtn.classList.add('small-button');
+            removeBtn.addEventListener('click', () => {
+                selectedTeamRepos = selectedTeamRepos.filter(r => r !== repo);
+                renderSelectedTeamRepos();
+                if (selectedTeamRepos.length === 0) {
+                    teamRepoSelectionDiv.style.display = 'none';
+                }
+            });
+            listItem.appendChild(removeBtn);
+            selectedTeamReposList.appendChild(listItem);
+        });
+    }
+
+    generateTeamGlyphBtn.addEventListener('click', async () => {
+        if (selectedTeamRepos.length === 0) {
+            alert('Please select at least one repository for the team glyph.');
+            return;
+        }
+
+        const reposData = selectedTeamRepos.map(repo => {
+            const [provider, owner, repoName] = repo.split('/');
+            return { provider, owner, repo: repoName };
+        });
+
+        const startDate = startDateInput.value;
+        const endDate = endDateInput.value;
+        const queryParams = new URLSearchParams();
+        if (startDate) queryParams.append('start_date', startDate);
+        if (endDate) queryParams.append('end_date', endDate);
+
+        try {
+            const response = await fetch(`http://localhost:8000/api/team-commits?${queryParams.toString()}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(reposData),
+            });
+
+            if (response.ok) {
+                const commits = await response.json();
+                console.log('Fetched team commits:', commits);
+                generateAndVisualizeGlyph(commits, themeSelect.value);
+            } else {
+                console.error('Error fetching team commits:', response.status);
+            }
+        } catch (error) {
+            console.error('Error:', error);
+        }
+    });
+
     generateGlyphBtn.addEventListener('click', async () => {
         const selectedRepo = repoSelect.value;
         const selectedTheme = themeSelect.value; // Get selected theme
@@ -64,7 +168,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (response.ok) {
                     const commits = await response.json();
                     console.log('Fetched commits:', commits);
-                    generateAndVisualizeGlyph(commits, selectedTheme); // Pass theme to visualization function
+                    generateAndVisualizeGlyph(commits, selectedTheme);
                 } else {
                     console.error('Error fetching commits:', response.status);
                 }
@@ -73,6 +177,12 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
     });
+
+    function applyTheme(theme) {
+        const container = document.querySelector('.container');
+        container.classList.remove('theme-default', 'theme-ocean', 'theme-forest', 'theme-sunset');
+        container.classList.add(`theme-${theme}`);
+    }
 
     function generateAndVisualizeGlyph(commits, theme) {
         // Simple Glyph Generation Algorithm (Placeholder)
@@ -115,6 +225,30 @@ document.addEventListener('DOMContentLoaded', () => {
         let colorIndex = 0;
         const colors = ["#FF5733", "#33FF57", "#3357FF", "#FF33F0", "#F0FF33", "#33F0FF"]; // Example colors
 
+        // Define visual properties based on intent and sentiment
+        const intentShapes = {
+            "feature": "rect",
+            "bug_fix": "circle",
+            "refactor": "triangle", // Custom rendering needed for triangle
+            "documentation": "ellipse",
+            "style": "line",
+            "test": "polygon", // Custom rendering needed for polygon
+            "chore": "star", // Custom rendering needed for star
+            "build": "diamond", // Custom rendering needed for diamond
+            "ci": "hexagon", // Custom rendering needed for hexagon
+            "performance": "path", // Custom rendering needed for path
+            "revert": "cross", // Custom rendering needed for cross
+            "configuration": "square",
+            "merge": "arrow", // Custom rendering needed for arrow
+            "other": "circle"
+        };
+
+        const sentimentColors = {
+            "positive": "#4CAF50", // Green
+            "negative": "#F44336", // Red
+            "neutral": "#2196F3" // Blue
+        };
+
         commits.forEach((commit, index) => {
             if (!contributors[commit.author_name]) {
                 contributors[commit.author_name] = colors[colorIndex % colors.length];
@@ -134,23 +268,129 @@ document.addEventListener('DOMContentLoaded', () => {
             const x = centerX + radius * Math.cos(angle);
             const y = centerY + radius * Math.sin(angle);
 
-            // Create a circle for each commit
-            const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
-            circle.setAttribute("cx", x);
-            circle.setAttribute("cy", y);
-            circle.setAttribute("r", 3 + (commit.message.length % 5)); // Vary size based on message length
-            circle.setAttribute("fill", commitColor); // Use contributor color
-            circle.setAttribute("stroke", "#333");
-            circle.setAttribute("stroke-width", "0.5");
-            circle.setAttribute("data-commit-sha", commit.sha);
-            circle.setAttribute("data-commit-message", commit.message);
-            circle.setAttribute("data-commit-author", commit.author_name);
-            circle.setAttribute("data-commit-date", new Date(commit.date).toLocaleString());
-            glyphSvg.appendChild(circle);
+            const nodeSize = parseFloat(document.getElementById('node-size').value);
+            const branchThickness = parseFloat(document.getElementById('branch-thickness').value);
+
+            // Determine shape based on intent
+            const shapeType = intentShapes[commit.intent] || intentShapes["other"];
+            const fillColor = sentimentColors[commit.sentiment] || sentimentColors["neutral"];
+
+            let element;
+            switch (shapeType) {
+                case "rect":
+                case "square":
+                    element = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+                    element.setAttribute("x", x - nodeSize / 2);
+                    element.setAttribute("y", y - nodeSize / 2);
+                    element.setAttribute("width", nodeSize);
+                    element.setAttribute("height", nodeSize);
+                    break;
+                case "triangle":
+                    element = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
+                    const trianglePoints = `${x},${y - nodeSize} ${x - nodeSize * 0.866},${y + nodeSize * 0.5} ${x + nodeSize * 0.866},${y + nodeSize * 0.5}`;
+                    element.setAttribute("points", trianglePoints);
+                    break;
+                case "ellipse":
+                    element = document.createElementNS("http://www.w3.org/2000/svg", "ellipse");
+                    element.setAttribute("cx", x);
+                    element.setAttribute("cy", y);
+                    element.setAttribute("rx", nodeSize);
+                    element.setAttribute("ry", nodeSize * 0.6);
+                    break;
+                case "polygon": // For test (e.g., pentagon)
+                    element = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
+                    const numSides = 5; // Pentagon
+                    let polygonPoints = "";
+                    for (let i = 0; i < numSides; i++) {
+                        const polyAngle = (i / numSides) * Math.PI * 2;
+                        polygonPoints += `${x + nodeSize * Math.cos(polyAngle)},${y + nodeSize * Math.sin(polyAngle)} `;
+                    }
+                    element.setAttribute("points", polygonPoints.trim());
+                    break;
+                case "star": // For chore (e.g., 5-pointed star)
+                    element = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
+                    const starPoints = [];
+                    for (let i = 0; i < 10; i++) {
+                        const r = (i % 2 === 0) ? nodeSize : nodeSize / 2;
+                        const starAngle = Math.PI / 2 + i * Math.PI / 5;
+                        starPoints.push(`${x + r * Math.cos(starAngle)},${y + r * Math.sin(starAngle)}`);
+                    }
+                    element.setAttribute("points", starPoints.join(" "));
+                    break;
+                case "diamond": // For build
+                    element = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
+                    const diamondPoints = `${x},${y - nodeSize} ${x + nodeSize},${y} ${x},${y + nodeSize} ${x - nodeSize},${y}`;
+                    element.setAttribute("points", diamondPoints);
+                    break;
+                case "hexagon": // For CI
+                    element = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
+                    const hexPoints = [];
+                    for (let i = 0; i < 6; i++) {
+                        const hexAngle = (i / 6) * Math.PI * 2;
+                        hexPoints.push(`${x + nodeSize * Math.cos(hexAngle)},${y + nodeSize * Math.sin(hexAngle)}`);
+                    }
+                    element.setAttribute("points", hexPoints.join(" "));
+                    break;
+                case "cross": // For revert
+                    element = document.createElementNS("http://www.w3.org/2000/svg", "g");
+                    const line1 = document.createElementNS("http://www.w3.org/2000/svg", "line");
+                    line1.setAttribute("x1", x - nodeSize / 2);
+                    line1.setAttribute("y1", y - nodeSize / 2);
+                    line1.setAttribute("x2", x + nodeSize / 2);
+                    line1.setAttribute("y2", y + nodeSize / 2);
+                    line1.setAttribute("stroke", fillColor);
+                    line1.setAttribute("stroke-width", branchThickness);
+                    element.appendChild(line1);
+                    const line2 = document.createElementNS("http://www.w3.org/2000/svg", "line");
+                    line2.setAttribute("x1", x - nodeSize / 2);
+                    line2.setAttribute("y1", y + nodeSize / 2);
+                    line2.setAttribute("x2", x + nodeSize / 2);
+                    line2.setAttribute("y2", y - nodeSize / 2);
+                    line2.setAttribute("stroke", fillColor);
+                    line2.setAttribute("stroke-width", branchThickness);
+                    element.appendChild(line2);
+                    break;
+                case "arrow": // For merge
+                    element = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
+                    const arrowHeadSize = nodeSize * 1.5;
+                    const arrowPoints = `${x - arrowHeadSize / 2},${y - arrowHeadSize / 4} ${x + arrowHeadSize / 2},${y - arrowHeadSize / 4} ${x + arrowHeadSize / 2},${y - arrowHeadSize / 2} ${x + arrowHeadSize},${y} ${x + arrowHeadSize / 2},${y + arrowHeadSize / 2} ${x + arrowHeadSize / 2},${y + arrowHeadSize / 4} ${x - arrowHeadSize / 2},${y + arrowHeadSize / 4}`;
+                    element.setAttribute("points", arrowPoints);
+                    break;
+                case "line": // For style
+                    element = document.createElementNS("http://www.w3.org/2000/svg", "line");
+                    element.setAttribute("x1", x - nodeSize / 2);
+                    element.setAttribute("y1", y);
+                    element.setAttribute("x2", x + nodeSize / 2);
+                    element.setAttribute("y2", y);
+                    element.setAttribute("stroke", fillColor);
+                    element.setAttribute("stroke-width", branchThickness);
+                    break;
+                case "circle":
+                default:
+                    element = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+                    element.setAttribute("cx", x);
+                    element.setAttribute("cy", y);
+                    element.setAttribute("r", nodeSize);
+                    break;
+            }
+
+            if (shapeType !== "cross" && shapeType !== "line") { // Apply fill and stroke for non-line/cross shapes
+                element.setAttribute("fill", fillColor);
+                element.setAttribute("stroke", commitColor); // Use contributor color for stroke
+                element.setAttribute("stroke-width", "1");
+            }
+
+            element.setAttribute("data-commit-sha", commit.sha);
+            element.setAttribute("data-commit-message", commit.message);
+            element.setAttribute("data-commit-author", commit.author_name);
+            element.setAttribute("data-commit-date", new Date(commit.date).toLocaleString());
+            element.setAttribute("data-commit-intent", commit.intent);
+            element.setAttribute("data-commit-sentiment", commit.sentiment);
+            glyphSvg.appendChild(element);
 
             // Add tooltip event listeners
-            circle.addEventListener('mouseover', showTooltip);
-            circle.addEventListener('mouseout', hideTooltip);
+            element.addEventListener('mouseover', showTooltip);
+            element.addEventListener('mouseout', hideTooltip);
 
             // Optional: Add a line connecting commits (simple branch visualization)
             if (index > 0) {
@@ -167,7 +407,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 line.setAttribute("x2", x);
                 line.setAttribute("y2", y);
                 line.setAttribute("stroke", "#666");
-                line.setAttribute("stroke-width", "1");
+                line.setAttribute("stroke-width", branchThickness);
                 glyphSvg.appendChild(line);
             }
         });
@@ -177,18 +417,27 @@ document.addEventListener('DOMContentLoaded', () => {
 
     shareGlyphBtn.addEventListener('click', async () => {
         const glyphData = glyphSvg.outerHTML;
+        const commits = JSON.parse(localStorage.getItem('currentCommits')); // Retrieve commits for achievement calculation
+        const metadata = {
+            complexity_score: commits.length, // Simple example
+            commit_count: commits.length,
+            // Add more metadata as needed
+            commits: commits // Include commits for achievement calculation on backend
+        };
+
         try {
             const response = await fetch('http://localhost:8000/api/share-glyph', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                body: JSON.stringify({ glyph_data: glyphData }),
+                body: JSON.stringify({ glyph_data: glyphData, metadata: metadata }),
             });
             if (response.ok) {
                 const data = await response.json();
                 shareLink.href = data.share_url;
                 shareLink.textContent = data.share_url;
+                embedSnippet.value = data.embed_snippet;
                 shareLinkDiv.style.display = 'block';
             } else {
                 console.error('Error sharing glyph:', response.status);
@@ -198,7 +447,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    // Check if it's a shared glyph page
+    // Check if it's a shared glyph page or embed page
     const pathParts = window.location.pathname.split('/');
     if (pathParts.length === 3 && pathParts[1] === 'glyph') {
         const shareId = pathParts[2];
@@ -215,9 +464,9 @@ document.addEventListener('DOMContentLoaded', () => {
                     const data = await response.json();
                     glyphSvg.innerHTML = data;
                     // Re-attach event listeners for shared glyphs
-                    glyphSvg.querySelectorAll('circle').forEach(circle => {
-                        circle.addEventListener('mouseover', showTooltip);
-                        circle.addEventListener('mouseout', hideTooltip);
+                    glyphSvg.querySelectorAll('circle, rect, polygon, ellipse, line, g').forEach(element => {
+                        element.addEventListener('mouseover', showTooltip);
+                        element.addEventListener('mouseout', hideTooltip);
                     });
                 } else {
                     console.error('Error fetching shared glyph:', response.status);
@@ -229,6 +478,37 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
         fetchSharedGlyph();
+    } else if (pathParts.length === 4 && pathParts[1] === 'embed' && pathParts[2] === 'glyph') {
+        const shareId = pathParts[3];
+        // This is an embed page, only show the glyph
+        document.body.innerHTML = '<svg id="glyph-svg" width="100%" height="100%"></svg>';
+        const embedGlyphSvg = document.getElementById('glyph-svg');
+        const embedTooltip = document.createElement('div');
+        embedTooltip.id = 'tooltip';
+        embedTooltip.classList.add('tooltip');
+        embedTooltip.style.display = 'none';
+        document.body.appendChild(embedTooltip);
+
+        async function fetchEmbedGlyph() {
+            try {
+                const response = await fetch(`http://localhost:8000/embed/glyph/${shareId}`);
+                if (response.ok) {
+                    const data = await response.json();
+                    embedGlyphSvg.innerHTML = data;
+                    embedGlyphSvg.querySelectorAll('circle, rect, polygon, ellipse, line, g').forEach(element => {
+                        element.addEventListener('mouseover', showTooltip);
+                        element.addEventListener('mouseout', hideTooltip);
+                    });
+                } else {
+                    console.error('Error fetching embed glyph:', response.status);
+                    embedGlyphSvg.innerHTML = '<text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" fill="#888">Glyph not found or expired.</text>';
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                embedGlyphSvg.innerHTML = '<text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" fill="#888">Error loading glyph.</text>';
+            }
+        }
+        fetchEmbedGlyph();
     }
 
     // Tooltip functions
@@ -238,12 +518,16 @@ document.addEventListener('DOMContentLoaded', () => {
         const commitMessage = event.target.getAttribute('data-commit-message');
         const commitAuthor = event.target.getAttribute('data-commit-author');
         const commitDate = event.target.getAttribute('data-commit-date');
+        const commitIntent = event.target.getAttribute('data-commit-intent');
+        const commitSentiment = event.target.getAttribute('data-commit-sentiment');
 
         tooltip.innerHTML = `
             <strong>SHA:</strong> ${commitSha.substring(0, 7)}<br>
             <strong>Message:</strong> ${commitMessage}<br>
             <strong>Author:</strong> ${commitAuthor}<br>
-            <strong>Date:</strong> ${commitDate}
+            <strong>Date:</strong> ${commitDate}<br>
+            <strong>Intent:</strong> ${commitIntent}<br>
+            <strong>Sentiment:</strong> ${commitSentiment}
         `;
         tooltip.style.display = 'block';
         tooltip.style.left = `${event.pageX + 10}px`;
@@ -254,4 +538,169 @@ document.addEventListener('DOMContentLoaded', () => {
         const tooltip = document.getElementById('tooltip');
         tooltip.style.display = 'none';
     }
+
+    // Gallery functions
+    async function fetchGallery() {
+        const sortBy = gallerySort.value;
+        const filterTag = galleryFilterTag.value;
+        let url = `http://localhost:8000/api/gallery?sort_by=${sortBy}`;
+        if (filterTag) {
+            url += `&filter_by_tag=${filterTag}`;
+        }
+        try {
+            const response = await fetch(url);
+            if (response.ok) {
+                const galleryItems = await response.json();
+                renderGallery(galleryItems);
+            } else {
+                console.error('Error fetching gallery:', response.status);
+            }
+        } catch (error) {
+            console.error('Error:', error);
+        }
+    }
+
+    function renderGallery(items) {
+        galleryList.innerHTML = '';
+        if (items.length === 0) {
+            galleryList.innerHTML = '<p>No glyphs in the gallery yet.</p>';
+            return;
+        }
+        items.forEach(item => {
+            const galleryItemDiv = document.createElement('div');
+            galleryItemDiv.classList.add('gallery-item');
+            galleryItemDiv.innerHTML = `
+                <h3>${item.title}</h3>
+                <p>By: ${item.user_id}</p>
+                <p>${item.description}</p>
+                <p>Commits: ${item.commit_count}</p>
+                <p>Complexity: ${item.complexity_score}</p>
+                <p>Shared: ${new Date(item.created_at).toLocaleDateString()}</p>
+                <button class="view-glyph-btn" data-share-id="${item.id}">View Glyph</button>
+            `;
+            galleryList.appendChild(galleryItemDiv);
+        });
+
+        galleryList.querySelectorAll('.view-glyph-btn').forEach(button => {
+            button.addEventListener('click', (event) => {
+                const shareId = event.target.dataset.shareId;
+                // Redirect to the glyph view page or open in a modal
+                window.open(`/glyph/${shareId}`, '_blank');
+            });
+        });
+    }
+
+    applyGalleryFiltersBtn.addEventListener('click', fetchGallery);
+    gallerySort.addEventListener('change', fetchGallery);
+
+    // Achievements functions
+    async function fetchAchievements() {
+        try {
+            const userResponse = await fetch('http://localhost:8000/api/user');
+            if (!userResponse.ok) {
+                achievementsList.innerHTML = '<p>Please log in to view your achievements.</p>';
+                return;
+            }
+            const userData = await userResponse.json();
+            const userId = userData.login || userData.username; // GitHub uses login, GitLab uses username
+
+            const achievementsResponse = await fetch(`http://localhost:8000/api/achievements/${userId}`);
+            if (achievementsResponse.ok) {
+                const achievements = await achievementsResponse.json();
+                renderAchievements(achievements);
+            } else {
+                console.error('Error fetching achievements:', achievementsResponse.status);
+                achievementsList.innerHTML = '<p>Error loading achievements.</p>';
+            }
+        } catch (error) {
+            console.error('Error:', error);
+            achievementsList.innerHTML = '<p>Error loading achievements.</p>';
+        }
+    }
+
+    function renderAchievements(achievements) {
+        achievementsList.innerHTML = '';
+        if (achievements.length === 0) {
+            achievementsList.innerHTML = '<p>No achievements unlocked yet. Keep coding!</p>';
+            return;
+        }
+        achievements.forEach(achievement => {
+            const achievementDiv = document.createElement('div');
+            achievementDiv.classList.add('achievement-item');
+            achievementDiv.innerHTML = `
+                <h4>${achievement.title}</h4>
+                <p>${achievement.description}</p>
+            `;
+            achievementsList.appendChild(achievementDiv);
+        });
+    }
+
+    // Store commits in localStorage before generating glyph for achievement calculation
+    generateGlyphBtn.addEventListener('click', async () => {
+        const selectedRepo = repoSelect.value;
+        if (selectedRepo) {
+            const [provider, owner, repo] = selectedRepo.split('/');
+            const startDate = startDateInput.value;
+            const endDate = endDateInput.value;
+            let url = `http://localhost:8000/api/commits/${provider}/${owner}/${repo}`;
+            if (startDate) {
+                url += `?start_date=${startDate}`;
+            }
+            if (endDate) {
+                url += `${startDate ? '&' : '?'}end_date=${endDate}`;
+            }
+            try {
+                const response = await fetch(url);
+                if (response.ok) {
+                    const commits = await response.json();
+                    localStorage.setItem('currentCommits', JSON.stringify(commits)); // Store commits
+                    generateAndVisualizeGlyph(commits, themeSelect.value);
+                } else {
+                    console.error('Error fetching commits:', response.status);
+                }
+            } catch (error) {
+                console.error('Error:', error);
+            }
+        }
+    });
+
+    generateTeamGlyphBtn.addEventListener('click', async () => {
+        if (selectedTeamRepos.length === 0) {
+            alert('Please select at least one repository for the team glyph.');
+            return;
+        }
+
+        const reposData = selectedTeamRepos.map(repo => {
+            const [provider, owner, repoName] = repo.split('/');
+            return { provider, owner, repo: repoName };
+        });
+
+        const startDate = startDateInput.value;
+        const endDate = endDateInput.value;
+        const queryParams = new URLSearchParams();
+        if (startDate) queryParams.append('start_date', startDate);
+        if (endDate) queryParams.append('end_date', endDate);
+
+        try {
+            const response = await fetch(`http://localhost:8000/api/team-commits?${queryParams.toString()}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(reposData),
+            });
+
+            if (response.ok) {
+                const commits = await response.json();
+                localStorage.setItem('currentCommits', JSON.stringify(commits)); // Store commits
+                console.log('Fetched team commits:', commits);
+                generateAndVisualizeGlyph(commits, themeSelect.value);
+            } else {
+                console.error('Error fetching team commits:', response.status);
+            }
+        } catch (error) {
+            console.error('Error:', error);
+        }
+    });
+
 });

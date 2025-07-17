@@ -7,6 +7,30 @@ import httpx
 from starlette.middleware.sessions import SessionMiddleware
 from starlette.middleware.cors import CORSMiddleware
 from datetime import datetime
+from pydantic import BaseModel
+from typing import List, Dict
+import uuid
+
+# NLP for commit intent analysis
+import nltk
+from nltk.sentiment import SentimentIntensityAnalyzer
+from nltk.tokenize import word_tokenize
+from nltk.corpus import stopwords
+import re
+
+# Download NLTK data (only needs to be run once)
+try:
+    nltk.data.find('corpora/stopwords')
+except nltk.downloader.DownloadError:
+    nltk.download('stopwords')
+try:
+    nltk.data.find('tokenizers/punkt')
+except nltk.downloader.DownloadError:
+    nltk.download('punkt')
+try:
+    nltk.data.find('sentiment/vader_lexicon')
+except nltk.downloader.DownloadError:
+    nltk.download('vader_lexicon')
 
 load_dotenv()
 
@@ -120,6 +144,65 @@ async def get_repositories(request: Request):
         else:
             raise HTTPException(status_code=400, detail="Unknown provider")
 
+# NLP Function for Commit Intent Analysis
+def analyze_commit_intent(message: str) -> Dict[str, str]:
+    message_lower = message.lower()
+    intent = "other"
+    sentiment = "neutral"
+
+    # Intent analysis based on conventional commit standards and keywords
+    if message_lower.startswith("feat"):
+        intent = "feature"
+    elif message_lower.startswith("fix"):
+        intent = "bug_fix"
+    elif message_lower.startswith("refactor"):
+        intent = "refactor"
+    elif message_lower.startswith("docs"):
+        intent = "documentation"
+    elif message_lower.startswith("style"):
+        intent = "style"
+    elif message_lower.startswith("test"):
+        intent = "test"
+    elif message_lower.startswith("chore"):
+        intent = "chore"
+    elif message_lower.startswith("build"):
+        intent = "build"
+    elif message_lower.startswith("ci"):
+        intent = "ci"
+    elif message_lower.startswith("perf"):
+        intent = "performance"
+    elif message_lower.startswith("revert"):
+        intent = "revert"
+    elif "add" in message_lower:
+        intent = "feature"
+    elif "implement" in message_lower:
+        intent = "feature"
+    elif "bug" in message_lower or "issue" in message_lower:
+        intent = "bug_fix"
+    elif "correct" in message_lower:
+        intent = "bug_fix"
+    elif "update" in message_lower:
+        intent = "chore"
+    elif "remove" in message_lower or "delete" in message_lower:
+        intent = "chore"
+    elif "config" in message_lower:
+        intent = "configuration"
+    elif "merge" in message_lower:
+        intent = "merge"
+    
+    # Sentiment analysis
+    sid = SentimentIntensityAnalyzer()
+    sentiment_scores = sid.polarity_scores(message)
+    if sentiment_scores['compound'] >= 0.05:
+        sentiment = "positive"
+    elif sentiment_scores['compound'] <= -0.05:
+        sentiment = "negative"
+    else:
+        sentiment = "neutral"
+
+    return {"intent": intent, "sentiment": sentiment}
+
+
 @app.get("/api/commits/{provider}/{owner}/{repo}")
 async def get_commits(provider: str, owner: str, repo: str, request: Request, start_date: str = None, end_date: str = None):
     if "user" not in request.session:
@@ -148,13 +231,17 @@ async def get_commits(provider: str, owner: str, repo: str, request: Request, st
                     commit_details_response.raise_for_status()
                     commit_details = commit_details_response.json()
 
+                    intent_data = analyze_commit_intent(commit["commit"]["message"])
+
                     all_commits.append({
                         "sha": commit["sha"],
                         "message": commit["commit"]["message"],
                         "author_name": commit["commit"]["author"]["name"],
                         "date": commit["commit"]["author"]["date"],
                         "branch": branch_name,
-                        "files": commit_details["files"]
+                        "files": commit_details["files"],
+                        "intent": intent_data["intent"],
+                        "sentiment": intent_data["sentiment"]
                     })
         elif provider == "gitlab":
             headers = {"Authorization": f"Bearer {access_token}"}
@@ -170,12 +257,15 @@ async def get_commits(provider: str, owner: str, repo: str, request: Request, st
             commits = commits_response.json()
 
             for commit in commits:
+                intent_data = analyze_commit_intent(commit["message"])
                 all_commits.append({
                     "sha": commit["id"],
                     "message": commit["message"],
                     "author_name": commit["author_name"],
                     "date": commit["created_at"],
-                    "branch": "master" # GitLab API for project commits doesn't directly give branch per commit easily without more calls
+                    "branch": "master", # GitLab API for project commits doesn't directly give branch per commit easily without more calls
+                    "intent": intent_data["intent"],
+                    "sentiment": intent_data["sentiment"]
                 })
         else:
             raise HTTPException(status_code=400, detail="Unknown provider")
@@ -191,9 +281,6 @@ async def get_commits(provider: str, owner: str, repo: str, request: Request, st
             all_commits = [c for c in all_commits if datetime.strptime(c["date"].split("T")[0], "%Y-%m-%d").timestamp() <= end_timestamp]
         
         return all_commits
-
-from pydantic import BaseModel
-from typing import List, Dict
 
 class RepoDetails(BaseModel):
     provider: str
@@ -230,10 +317,9 @@ async def get_team_commits(request: Request, repos: List[RepoDetails], start_dat
     all_team_commits.sort(key=lambda x: x["date"])
     return all_team_commits
 
-import uuid
-
-# In-memory storage for shared glyphs (for demonstration purposes)
+# In-memory storage for shared glyphs and gallery (for demonstration purposes)
 shared_glyphs = {}
+glyph_gallery = [] # Stores metadata about shared glyphs for the gallery
 
 @app.post("/api/share-glyph")
 async def share_glyph(request: Request):
@@ -242,12 +328,43 @@ async def share_glyph(request: Request):
     
     data = await request.json()
     glyph_data = data.get("glyph_data")
+    metadata = data.get("metadata", {}) # Optional metadata for gallery
+    
     if not glyph_data:
         raise HTTPException(status_code=400, detail="No glyph data provided")
     
     share_id = str(uuid.uuid4())
     shared_glyphs[share_id] = glyph_data
-    return {"share_url": f"http://localhost:5500/glyph/{share_id}"}
+
+    # Add to gallery with some basic metadata
+    gallery_entry = {
+        "id": share_id,
+        "user_id": request.session["user_profile"].get("login") if request.session.get("provider") == "github" else request.session["user_profile"].get("username"),
+        "created_at": datetime.now().isoformat(),
+        "complexity_score": metadata.get("complexity_score", 0), # Example metadata
+        "commit_count": metadata.get("commit_count", 0),
+        "title": metadata.get("title", f"Glyph by {gallery_entry['user_id']}"),
+        "description": metadata.get("description", "A unique visualization of commit history."),
+        "tags": metadata.get("tags", []),
+        "public": metadata.get("public", True) # Assume public by default for gallery
+    }
+    if gallery_entry["public"]:
+        glyph_gallery.append(gallery_entry)
+
+    # Award achievements after glyph is shared
+    user_id = request.session["user_profile"].get("login") if request.session.get("provider") == "github" else request.session["user_profile"].get("username")
+    if user_id:
+        # For achievement calculation, we need the actual commits data that generated the glyph.
+        # This is a placeholder. In a real system, glyph_data would contain enough info
+        # or a reference to fetch the original commits.
+        # For now, we'll assume glyph_data contains a 'commits' key with the list of commits.
+        # If not, this part needs to be adjusted based on how glyph_data is structured.
+        if "commits" in glyph_data:
+            award_achievements(user_id, glyph_data, glyph_data["commits"])
+        else:
+            print(f"Warning: No 'commits' data found in glyph_data for user {user_id}. Cannot award achievements.")
+
+    return {"share_url": f"http://localhost:5500/glyph/{share_id}", "embed_snippet": f'<iframe src="http://localhost:8000/embed/glyph/{share_id}" width="600" height="400" frameborder="0"></iframe>'}
 
 @app.get("/api/glyph/{share_id}")
 async def get_shared_glyph(share_id: str):
@@ -256,7 +373,110 @@ async def get_shared_glyph(share_id: str):
         raise HTTPException(status_code=404, detail="Glyph not found")
     return glyph_data
 
+@app.get("/embed/glyph/{share_id}")
+async def embed_glyph(share_id: str):
+    glyph_data = shared_glyphs.get(share_id)
+    if not glyph_data:
+        raise HTTPException(status_code=404, detail="Glyph not found")
+    
+    # This endpoint would serve a minimal HTML page that loads the glyph visualization
+    # For now, we'll just return the data, and the frontend will handle rendering in an iframe
+    # In a real scenario, this would be a dedicated HTML page with minimal JS to render the glyph
+    return JSONResponse(content=glyph_data) # Or an HTMLResponse with embedded JS to render
+
+@app.get("/api/gallery")
+async def get_gallery(sort_by: str = "recent", filter_by_tag: str = None):
+    filtered_glyphs = [g for g in glyph_gallery if g["public"]]
+    
+    if filter_by_tag:
+        filtered_glyphs = [g for g in filtered_glyphs if filter_by_tag.lower() in [tag.lower() for tag in g.get("tags", [])]]
+
+    if sort_by == "recent":
+        filtered_glyphs.sort(key=lambda x: x["created_at"], reverse=True)
+    elif sort_by == "trending":
+        # Placeholder for trending logic (e.g., based on views, shares, likes)
+        # For now, just sort by complexity as a proxy
+        filtered_glyphs.sort(key=lambda x: x.get("complexity_score", 0), reverse=True)
+    elif sort_by == "complex":
+        filtered_glyphs.sort(key=lambda x: x.get("complexity_score", 0), reverse=True)
+    
+    return filtered_glyphs
+
+# Achievement System (in-memory for demonstration)
+user_achievements = {} # user_id -> list of achievement_ids
+
+achievements_definitions = {
+    "decade_of_code": {
+        "title": "Decade of Code",
+        "description": "Awarded for projects with commit history spanning 10 years or more.",
+        "criteria": {"min_years": 10}
+    },
+    "team_titan": {
+        "title": "Team Titan",
+        "description": "Awarded for contributing to a large collaborative Glyph (e.g., >5 unique authors).",
+        "criteria": {"min_authors": 5}
+    },
+    "solo_voyager": {
+        "title": "Solo Voyager",
+        "description": "Awarded for a significant single-author project (e.g., >1000 commits by one author).",
+        "criteria": {"min_commits": 1000, "max_authors": 1}
+    },
+    "bug_hunter": {
+        "title": "Bug Hunter",
+        "description": "Awarded for a Glyph with a high proportion of 'bug_fix' commits.",
+        "criteria": {"min_bug_fix_ratio": 0.3} # 30% bug fix commits
+    },
+    "feature_fanatic": {
+        "title": "Feature Fanatic",
+        "description": "Awarded for a Glyph with a high proportion of 'feature' commits.",
+        "criteria": {"min_feature_ratio": 0.5} # 50% feature commits
+    }
+}
+
+def award_achievements(user_id: str, glyph_data: Dict, commits: List[Dict]):
+    if user_id not in user_achievements:
+        user_achievements[user_id] = []
+
+    # Calculate metrics for achievements
+    commit_dates = [datetime.fromisoformat(c["date"].replace("Z", "+00:00")) for c in commits]
+    min_date = min(commit_dates) if commit_dates else datetime.now()
+    max_date = max(commit_dates) if commit_dates else datetime.now()
+    years_diff = (max_date - min_date).days / 365.25
+
+    unique_authors = set(c["author_name"] for c in commits)
+    
+    commit_intents = [c["intent"] for c in commits]
+    total_commits = len(commit_intents)
+    bug_fix_count = commit_intents.count("bug_fix")
+    feature_count = commit_intents.count("feature")
+
+    bug_fix_ratio = bug_fix_count / total_commits if total_commits > 0 else 0
+    feature_ratio = feature_count / total_commits if total_commits > 0 else 0
+
+    # Check criteria for each achievement
+    if years_diff >= achievements_definitions["decade_of_code"]["criteria"]["min_years"] and "decade_of_code" not in user_achievements[user_id]:
+        user_achievements[user_id].append("decade_of_code")
+    
+    if len(unique_authors) >= achievements_definitions["team_titan"]["criteria"]["min_authors"] and "team_titan" not in user_achievements[user_id]:
+        user_achievements[user_id].append("team_titan")
+
+    if len(unique_authors) <= achievements_definitions["solo_voyager"]["criteria"]["max_authors"] and \
+       total_commits >= achievements_definitions["solo_voyager"]["criteria"]["min_commits"] and \
+       "solo_voyager" not in user_achievements[user_id]:
+        user_achievements[user_id].append("solo_voyager")
+
+    if bug_fix_ratio >= achievements_definitions["bug_hunter"]["criteria"]["min_bug_fix_ratio"] and "bug_hunter" not in user_achievements[user_id]:
+        user_achievements[user_id].append("bug_hunter")
+
+    if feature_ratio >= achievements_definitions["feature_fanatic"]["criteria"]["min_feature_ratio"] and "feature_fanatic" not in user_achievements[user_id]:
+        user_achievements[user_id].append("feature_fanatic")
+
+@app.get("/api/achievements/{user_id}")
+async def get_user_achievements(user_id: str):
+    achievements = user_achievements.get(user_id, [])
+    return [{"id": aid, "title": achievements_definitions[aid]["title"], "description": achievements_definitions[aid]["description"]}
+            for aid in achievements]
+
 @app.get("/")
 async def read_root():
     return {"message": "Welcome to GitGlyph!"}
-

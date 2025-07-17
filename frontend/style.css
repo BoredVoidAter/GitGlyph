@@ -14,6 +14,8 @@ body {
     border-radius: 8px;
     box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
     text-align: center;
+    width: 90%;
+    max-width: 1000px;
 }
 
 button {
@@ -30,7 +32,15 @@ button:hover {
     background-color: #555;
 }
 
-select {
+.small-button {
+    padding: 5px 10px;
+    margin: 5px;
+    font-size: 0.8em;
+}
+
+select,
+input[type="date"],
+input[type="text"] {
     padding: 8px;
     margin: 10px;
     border-radius: 5px;
@@ -74,4 +84,121 @@ select {
 
 #share-link {
     word-break: break-all;
+}
+
+#embed-snippet {
+    width: 100%;
+    resize: vertical;
+    margin-top: 10px;
+    padding: 5px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+}
+
+/* Tab Styles */
+.tabs {
+    display: flex;
+    justify-content: center;
+    margin-bottom: 20px;
+}
+
+.tab-button {
+    background-color: #f0f0f0;
+    color: #333;
+    border: 1px solid #ccc;
+    border-bottom: none;
+    border-radius: 5px 5px 0 0;
+    padding: 10px 20px;
+    cursor: pointer;
+    margin: 0 2px;
+}
+
+.tab-button.active {
+    background-color: #333;
+    color: #fff;
+    border-color: #333;
+}
+
+.tab-content {
+    display: none;
+    padding: 20px 0;
+    border-top: 1px solid #eee;
+}
+
+.tab-content.active {
+    display: block;
+}
+
+/* Gallery Styles */
+.gallery-controls {
+    margin-bottom: 20px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.gallery-item {
+    border: 1px solid #eee;
+    border-radius: 8px;
+    padding: 15px;
+    margin: 10px;
+    text-align: left;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
+    display: inline-block; /* For a grid-like layout */
+    width: 300px; /* Adjust as needed */
+    vertical-align: top;
+}
+
+.gallery-item h3 {
+    margin-top: 0;
+    color: #333;
+}
+
+.gallery-item p {
+    font-size: 0.9em;
+    color: #666;
+}
+
+.view-glyph-btn {
+    background-color: #007bff;
+    margin-top: 10px;
+}
+
+.view-glyph-btn:hover {
+    background-color: #0056b3;
+}
+
+/* Achievements Styles */
+.achievement-item {
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+    padding: 15px;
+    margin: 10px auto;
+    text-align: left;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.03);
+    max-width: 600px;
+}
+
+.achievement-item h4 {
+    margin-top: 0;
+    color: #28a745;
+}
+
+.achievement-item p {
+    font-size: 0.9em;
+    color: #555;
+}
+
+/* Tooltip Styles */
+.tooltip {
+    position: absolute;
+    background-color: rgba(0, 0, 0, 0.8);
+    color: #fff;
+    padding: 8px;
+    border-radius: 4px;
+    font-size: 0.8em;
+    pointer-events: none; /* Allows interaction with elements behind the tooltip */
+    z-index: 1000;
+    text-align: left;
 }
