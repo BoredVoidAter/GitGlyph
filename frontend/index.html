@@ -14,6 +14,14 @@
         <div id="repository-selection" style="display: none;">
             <h2>Select a Repository</h2>
             <select id="repo-select"></select>
+            <button id="add-repo-to-team" class="small-button">Add to Team Glyph</button>
+
+            <div id="team-repo-selection" style="display: none;">
+                <h3>Team Glyph Repositories:</h3>
+                <ul id="selected-team-repos"></ul>
+                <button id="generate-team-glyph">Generate Team Glyph</button>
+            </div>
+
             <div class="theme-selection">
                 <label for="theme-select">Select Theme:</label>
                 <select id="theme-select">
@@ -23,6 +31,20 @@
                     <option value="sunset">Sunset Orange</option>
                 </select>
             </div>
+            
+            <div class="aesthetic-controls">
+                <h3>Aesthetic Controls</h3>
+                <label for="branch-thickness">Branch Thickness:</label>
+                <input type="range" id="branch-thickness" min="0.5" max="5" step="0.1" value="1">
+
+                <label for="node-size">Commit Node Size:</label>
+                <input type="range" id="node-size" min="1" max="10" step="0.5" value="3">
+
+                <label for="animation-speed">Animation Speed:</label>
+                <input type="range" id="animation-speed" min="0.1" max="2" step="0.1" value="1">
+
+            </div>
+
             <div class="date-range-selection">
                 <label for="start-date">Start Date:</label>
                 <input type="date" id="start-date">
@@ -31,6 +53,7 @@
             </div>
             <button id="generate-glyph">Generate Glyph</button>
             <button id="share-glyph" style="display: none;">Share Glyph</button>
+            <button id="export-png" style="display: none;">Export as PNG</button>
         </div>
         <div id="share-link-div" style="display: none;">
             <p>Share your Glyph: <a id="share-link" href="#" target="_blank"></a></p>

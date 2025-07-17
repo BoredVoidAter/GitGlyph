@@ -192,6 +192,44 @@ async def get_commits(provider: str, owner: str, repo: str, request: Request, st
         
         return all_commits
 
+from pydantic import BaseModel
+from typing import List, Dict
+
+class RepoDetails(BaseModel):
+    provider: str
+    owner: str
+    repo: str
+
+@app.post("/api/team-commits")
+async def get_team_commits(request: Request, repos: List[RepoDetails], start_date: str = None, end_date: str = None):
+    if "user" not in request.session:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    
+    all_team_commits = []
+    for repo_detail in repos:
+        try:
+            # Reuse the existing get_commits logic
+            repo_commits = await get_commits(
+                provider=repo_detail.provider,
+                owner=repo_detail.owner,
+                repo=repo_detail.repo,
+                request=request,
+                start_date=start_date,
+                end_date=end_date
+            )
+            # Add repository information to each commit for distinct visual cues
+            for commit in repo_commits:
+                commit["repository"] = f"{repo_detail.owner}/{repo_detail.repo}"
+                commit["provider"] = repo_detail.provider
+            all_team_commits.extend(repo_commits)
+        except HTTPException as e:
+            # Log or handle errors for individual repositories, but don't stop the whole process
+            print(f"Error fetching commits for {repo_detail.owner}/{repo_detail.repo}: {e.detail}")
+            continue
+    
+    all_team_commits.sort(key=lambda x: x["date"])
+    return all_team_commits
+
 import uuid
 
 # In-memory storage for shared glyphs (for demonstration purposes)
