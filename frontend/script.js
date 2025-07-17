@@ -3,8 +3,12 @@ document.addEventListener('DOMContentLoaded', () => {
     const gitlabLoginBtn = document.getElementById('gitlab-login');
     const repositorySelectionDiv = document.getElementById('repository-selection');
     const repoSelect = document.getElementById('repo-select');
+    const orgSelect = document.getElementById('org-select');
     const generateGlyphBtn = document.getElementById('generate-glyph');
     const glyphSvg = document.getElementById('glyph-svg');
+    const toggle3dViewBtn = document.getElementById('toggle-3d-view');
+    const glyph2dView = document.getElementById('glyph-2d-view');
+    const glyph3dView = document.getElementById('glyph-3d-view');
     const themeSelect = document.getElementById('theme-select');
     const shareGlyphBtn = document.getElementById('share-glyph');
     const shareLinkDiv = document.getElementById('share-link-div');
@@ -30,6 +34,25 @@ document.addEventListener('DOMContentLoaded', () => {
     const refreshGlyphBtn = document.getElementById('refresh-glyph-btn');
 
     let currentGlyphData = null; // To store the current glyph's data for snapshots and refresh
+    let is3DView = false;
+
+    toggle3dViewBtn.addEventListener('click', () => {
+        is3DView = !is3DView;
+        if (is3DView) {
+            glyph2dView.style.display = 'none';
+            glyph3dView.style.display = 'block';
+            if (currentGlyphData) {
+                render3DGlyph(currentGlyphData.commits, currentGlyphData.theme);
+            }
+        } else {
+            glyph2dView.style.display = 'block';
+            glyph3dView.style.display = 'none';
+            // Re-render 2D glyph if needed, or ensure it's already there
+            if (currentGlyphData) {
+                generateAndVisualizeGlyph(currentGlyphData.commits, currentGlyphData.theme, currentGlyphData.annotations, currentGlyphData.last_commit_sha);
+            }
+        }
+    });
 
     // Story Annotation elements
     const annotationCommitShaInput = document.getElementById('annotation-commit-sha');
@@ -511,6 +534,9 @@ document.addEventListener('DOMContentLoaded', () => {
             element.setAttribute("data-commit-sentiment", commit.sentiment);
             element.setAttribute("data-commit-additions", commit.total_additions);
             element.setAttribute("data-commit-deletions", commit.total_deletions);
+            element.setAttribute("data-commit-url", commit.commit_url || '');
+            element.setAttribute("data-author-url", commit.author_url || '');
+            element.setAttribute("data-pull-request-url", commit.pull_request_url || '');
             glyphSvg.appendChild(element);
 
             // Add tooltip event listeners
@@ -667,16 +693,21 @@ document.addEventListener('DOMContentLoaded', () => {
         const commitDate = event.target.getAttribute('data-commit-date');
         const commitIntent = event.target.getAttribute('data-commit-intent');
         const commitSentiment = event.target.getAttribute('data-commit-sentiment');
+        const commitUrl = event.target.getAttribute('data-commit-url');
+        const authorUrl = event.target.getAttribute('data-author-url');
+        const pullRequestUrl = event.target.getAttribute('data-pull-request-url');
 
         tooltip.innerHTML = `
             <strong>SHA:</strong> ${commitSha.substring(0, 7)}<br>
             <strong>Message:</strong> ${commitMessage}<br>
-            <strong>Author:</strong> ${commitAuthor}<br>
+            <strong>Author:</strong> ${commitAuthor} ${authorUrl ? `<a href="${authorUrl}" target="_blank">(Profile)</a>` : ''}<br>
             <strong>Date:</strong> ${commitDate}<br>
             <strong>Intent:</strong> ${commitIntent}<br>
             <strong>Sentiment:</strong> ${commitSentiment}<br>
             <strong>Additions:</strong> ${event.target.getAttribute('data-commit-additions')}<br>
-            <strong>Deletions:</strong> ${event.target.getAttribute('data-commit-deletions')}
+            <strong>Deletions:</strong> ${event.target.getAttribute('data-commit-deletions')}<br>
+            ${commitUrl ? `<a href="${commitUrl}" target="_blank">View Commit</a>` : ''}
+            ${pullRequestUrl ? `<br><a href="${pullRequestUrl}" target="_blank">View Pull Request</a>` : ''}
         `;
         tooltip.style.display = 'block';
         tooltip.style.left = `${event.pageX + 10}px`;
@@ -854,315 +885,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 });
 
-function renderStoryAnnotations(annotations, commits, centerX, centerY, maxRadius, firstCommitDate, totalTimeSpan) {
-    annotations.forEach(annotation => {
-        let targetX, targetY;
-        if (annotation.commit_sha) {
-            // Find the commit by SHA and get its position
-            const targetCommit = commits.find(c => c.sha.startsWith(annotation.commit_sha));
-            if (targetCommit) {
-                const commitDate = new Date(targetCommit.date).getTime();
-                const timeRatio = totalTimeSpan > 0 ? (commitDate - firstCommitDate) / totalTimeSpan : 0;
-                const radius = maxRadius * timeRatio;
-                // Find the index of the target commit to get its angle
-                const commitIndex = commits.indexOf(targetCommit);
-                const angle = (commitIndex / commits.length) * Math.PI * 2;
-                targetX = centerX + radius * Math.cos(angle);
-                targetY = centerY + radius * Math.sin(angle);
-            } else {
-                console.warn(`Commit with SHA ${annotation.commit_sha} not found for annotation.`);
-                return; // Skip this annotation if commit not found
-            }
-        } else if (annotation.date) {
-            // Position based on date if commit SHA is not provided
-            const annotationDate = new Date(annotation.date).getTime();
-            const timeRatio = totalTimeSpan > 0 ? (annotationDate - firstCommitDate) / totalTimeSpan : 0;
-            const radius = maxRadius * timeRatio;
-            // For date-based annotations, place them on a fixed angle (e.g., 0 or PI/2)
-            targetX = centerX + radius * Math.cos(0); // Place on the right side
-            targetY = centerY + radius * Math.sin(0);
-        } else {
-            return; // Cannot place annotation without commit_sha or date
-        }
 
-        const markerSize = 10;
-        const marker = document.createElementNS("http://www.w3.org/2000/svg", "circle");
-        marker.setAttribute("cx", targetX);
-        marker.setAttribute("cy", targetY);
-        marker.setAttribute("r", markerSize);
-        marker.setAttribute("fill", "gold");
-        marker.setAttribute("stroke", "darkgoldenrod");
-        marker.setAttribute("stroke-width", "2");
-        marker.setAttribute("cursor", "pointer");
-        marker.setAttribute("data-annotation-title", annotation.title);
-        marker.setAttribute("data-annotation-description", annotation.description);
-        marker.setAttribute("data-annotation-date", annotation.date);
-        glyphSvg.appendChild(marker);
-
-        // Add tooltip for annotations
-        marker.addEventListener('mouseover', (event) => {
-            const tooltip = document.getElementById('tooltip');
-            tooltip.innerHTML = `
-                <strong>${event.target.getAttribute('data-annotation-title')}</strong><br>
-                ${event.target.getAttribute('data-annotation-description')}<br>
-                <em>${event.target.getAttribute('data-annotation-date')}</em>
-            `;
-            tooltip.style.display = 'block';
-            tooltip.style.left = `${event.pageX + 10}px`;
-            tooltip.style.top = `${event.pageY + 10}px`;
-        });
-        marker.addEventListener('mouseout', hideTooltip);
-    });
-}
-        // Simple Glyph Generation Algorithm (Placeholder)
-        // This is a very basic example. A real algorithm would be much more complex.
-
-        // Clear previous glyph
-        glyphSvg.innerHTML = '';
-
-        if (commits.length === 0) {
-            const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
-            text.setAttribute("x", "50%");
-            text.setAttribute("y", "50%");
-            text.setAttribute("dominant-baseline", "middle");
-            text.setAttribute("text-anchor", "middle");
-            text.setAttribute("fill", "#888");
-            text.textContent = "No commits to display.";
-            glyphSvg.appendChild(text);
-            shareGlyphBtn.style.display = 'none';
-            shareLinkDiv.style.display = 'none';
-            return;
-        }
-
-        applyTheme(theme);
-
-        const svgWidth = parseInt(glyphSvg.getAttribute('width'));
-        const svgHeight = parseInt(glyphSvg.getAttribute('height'));
-        const centerX = svgWidth / 2;
-        const centerY = svgHeight / 2;
-        const maxRadius = Math.min(centerX, centerY) * 0.8;
-
-        // Sort commits by date to establish a timeline
-        commits.sort((a, b) => new Date(a.date) - new Date(b.date));
-
-        const firstCommitDate = new Date(commits[0].date).getTime();
-        const lastCommitDate = new Date(commits[commits.length - 1].date).getTime();
-        const totalTimeSpan = lastCommitDate - firstCommitDate;
-
-        // Assign unique colors to contributors
-        const contributors = {};
-        let colorIndex = 0;
-        const colors = ["#FF5733", "#33FF57", "#3357FF", "#FF33F0", "#F0FF33", "#33F0FF"]; // Example colors
-
-        // Define visual properties based on intent and sentiment
-        const intentShapes = {
-            "feature": "rect",
-            "bug_fix": "circle",
-            "refactor": "triangle", // Custom rendering needed for triangle
-            "documentation": "ellipse",
-            "style": "line",
-            "test": "polygon", // Custom rendering needed for polygon
-            "chore": "star", // Custom rendering needed for star
-            "build": "diamond", // Custom rendering needed for diamond
-            "ci": "hexagon", // Custom rendering needed for hexagon
-            "performance": "path", // Custom rendering needed for path
-            "revert": "cross", // Custom rendering needed for cross
-            "configuration": "square",
-            "merge": "arrow", // Custom rendering needed for arrow
-            "other": "circle"
-        };
-
-        const sentimentColors = {
-            "positive": "#4CAF50", // Green
-            "negative": "#F44336", // Red
-            "neutral": "#2196F3" // Blue
-        };
-
-        commits.forEach((commit, index) => {
-            if (!contributors[commit.author_name]) {
-                contributors[commit.author_name] = colors[colorIndex % colors.length];
-                colorIndex++;
-            }
-            const commitColor = contributors[commit.author_name];
-
-            const commitDate = new Date(commit.date).getTime();
-            const timeRatio = totalTimeSpan > 0 ? (commitDate - firstCommitDate) / totalTimeSpan : 0;
-
-            // Map time to a radius
-            const radius = maxRadius * timeRatio;
-
-            // Map commit frequency/index to an angle (simple example)
-            const angle = (index / commits.length) * Math.PI * 2; // Full circle
-
-            const x = centerX + radius * Math.cos(angle);
-            const y = centerY + radius * Math.sin(angle);
-
-            const baseNodeSize = parseFloat(document.getElementById('node-size').value);
-            const branchThickness = parseFloat(document.getElementById('branch-thickness').value);
-
-            // Calculate churn and influence node size
-            const totalChurn = commit.total_additions + commit.total_deletions;
-            // Normalize churn to a reasonable range for visual impact
-            // Assuming a max churn of 1000 lines for significant impact, adjust as needed
-            const normalizedChurn = Math.min(totalChurn / 500, 2); // Max 2x base size for very high churn
-            const nodeSize = baseNodeSize * (1 + normalizedChurn * 0.5); // Increase size based on churn
-
-            // Determine shape based on intent
-            const shapeType = intentShapes[commit.intent] || intentShapes["other"];
-            const fillColor = sentimentColors[commit.sentiment] || sentimentColors["neutral"];
-
-            let element;
-            switch (shapeType) {
-                case "rect":
-                case "square":
-                    element = document.createElementNS("http://www.w3.org/2000/svg", "rect");
-                    element.setAttribute("x", x - nodeSize / 2);
-                    element.setAttribute("y", y - nodeSize / 2);
-                    element.setAttribute("width", nodeSize);
-                    element.setAttribute("height", nodeSize);
-                    break;
-                case "triangle":
-                    element = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
-                    const trianglePoints = `${x},${y - nodeSize} ${x - nodeSize * 0.866},${y + nodeSize * 0.5} ${x + nodeSize * 0.866},${y + nodeSize * 0.5}`;
-                    element.setAttribute("points", trianglePoints);
-                    break;
-                case "ellipse":
-                    element = document.createElementNS("http://www.w3.org/2000/svg", "ellipse");
-                    element.setAttribute("cx", x);
-                    element.setAttribute("cy", y);
-                    element.setAttribute("rx", nodeSize);
-                    element.setAttribute("ry", nodeSize * 0.6);
-                    break;
-                case "polygon": // For test (e.g., pentagon)
-                    element = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
-                    const numSides = 5; // Pentagon
-                    let polygonPoints = "";
-                    for (let i = 0; i < numSides; i++) {
-                        const polyAngle = (i / numSides) * Math.PI * 2;
-                        polygonPoints += `${x + nodeSize * Math.cos(polyAngle)},${y + nodeSize * Math.sin(polyAngle)} `;
-                    }
-                    element.setAttribute("points", polygonPoints.trim());
-                    break;
-                case "star": // For chore (e.g., 5-pointed star)
-                    element = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
-                    const starPoints = [];
-                    for (let i = 0; i < 10; i++) {
-                        const r = (i % 2 === 0) ? nodeSize : nodeSize / 2;
-                        const starAngle = Math.PI / 2 + i * Math.PI / 5;
-                        starPoints.push(`${x + r * Math.cos(starAngle)},${y + r * Math.sin(starAngle)}`);
-                    }
-                    element.setAttribute("points", starPoints.join(" "));
-                    break;
-                case "diamond": // For build
-                    element = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
-                    const diamondPoints = `${x},${y - nodeSize} ${x + nodeSize},${y} ${x},${y + nodeSize} ${x - nodeSize},${y}`;
-                    element.setAttribute("points", diamondPoints);
-                    break;
-                case "hexagon": // For CI
-                    element = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
-                    const hexPoints = [];
-                    for (let i = 0; i < 6; i++) {
-                        const hexAngle = (i / 6) * Math.PI * 2;
-                        hexPoints.push(`${x + nodeSize * Math.cos(hexAngle)},${y + nodeSize * Math.sin(hexAngle)}`);
-                    }
-                    element.setAttribute("points", hexPoints.join(" "));
-                    break;
-                case "cross": // For revert
-                    element = document.createElementNS("http://www.w3.org/2000/svg", "g");
-                    const line1 = document.createElementNS("http://www.w3.org/2000/svg", "line");
-                    line1.setAttribute("x1", x - nodeSize / 2);
-                    line1.setAttribute("y1", y - nodeSize / 2);
-                    line1.setAttribute("x2", x + nodeSize / 2);
-                    line1.setAttribute("y2", y + nodeSize / 2);
-                    line1.setAttribute("stroke", fillColor);
-                    line1.setAttribute("stroke-width", branchThickness);
-                    element.appendChild(line1);
-                    const line2 = document.createElementNS("http://www.w3.org/2000/svg", "line");
-                    line2.setAttribute("x1", x - nodeSize / 2);
-                    line2.setAttribute("y1", y + nodeSize / 2);
-                    line2.setAttribute("x2", x + nodeSize / 2);
-                    line2.setAttribute("y2", y - nodeSize / 2);
-                    line2.setAttribute("stroke", fillColor);
-                    line2.setAttribute("stroke-width", branchThickness);
-                    element.appendChild(line2);
-                    break;
-                case "arrow": // For merge
-                    element = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
-                    const arrowHeadSize = nodeSize * 1.5;
-                    const arrowPoints = `${x - arrowHeadSize / 2},${y - arrowHeadSize / 4} ${x + arrowHeadSize / 2},${y - arrowHeadSize / 4} ${x + arrowHeadSize / 2},${y - arrowHeadSize / 2} ${x + arrowHeadSize},${y} ${x + arrowHeadSize / 2},${y + arrowHeadSize / 2} ${x + arrowHeadSize / 2},${y + arrowHeadSize / 4} ${x - arrowHeadSize / 2},${y + arrowHeadSize / 4}`;
-                    element.setAttribute("points", arrowPoints);
-                    break;
-                case "line": // For style
-                    element = document.createElementNS("http://www.w3.org/2000/svg", "line");
-                    element.setAttribute("x1", x - nodeSize / 2);
-                    element.setAttribute("y1", y);
-                    element.setAttribute("x2", x + nodeSize / 2);
-                    element.setAttribute("y2", y);
-                    element.setAttribute("stroke", fillColor);
-                    element.setAttribute("stroke-width", branchThickness);
-                    break;
-                case "circle":
-                default:
-                    element = document.createElementNS("http://www.w3.org/2000/svg", "circle");
-                    element.setAttribute("cx", x);
-                    element.setAttribute("cy", y);
-                    element.setAttribute("r", nodeSize);
-                    break;
-            }
-
-            if (shapeType !== "cross" && shapeType !== "line") { // Apply fill and stroke for non-line/cross shapes
-                element.setAttribute("fill", fillColor);
-                element.setAttribute("stroke", commitColor); // Use contributor color for stroke
-                element.setAttribute("stroke-width", "1");
-            }
-
-            element.setAttribute("data-commit-sha", commit.sha);
-            element.setAttribute("data-commit-message", commit.message);
-            element.setAttribute("data-commit-author", commit.author_name);
-            element.setAttribute("data-commit-date", new Date(commit.date).toLocaleString());
-            element.setAttribute("data-commit-intent", commit.intent);
-            element.setAttribute("data-commit-sentiment", commit.sentiment);
-            element.setAttribute("data-commit-additions", commit.total_additions);
-            element.setAttribute("data-commit-deletions", commit.total_deletions);
-            glyphSvg.appendChild(element);
-
-            // Add tooltip event listeners
-            element.addEventListener('mouseover', showTooltip);
-            element.addEventListener('mouseout', hideTooltip);
-
-            // Optional: Add a line connecting commits (simple branch visualization)
-            if (index > 0) {
-                const prevCommit = commits[index - 1];
-                const prevTimeRatio = totalTimeSpan > 0 ? (new Date(prevCommit.date).getTime() - firstCommitDate) / totalTimeSpan : 0;
-                const prevRadius = maxRadius * prevTimeRatio;
-                const prevAngle = ((index - 1) / commits.length) * Math.PI * 2;
-                const prevX = centerX + prevRadius * Math.cos(prevAngle);
-                const prevY = centerY + prevRadius * Math.sin(prevAngle);
-
-                const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
-                line.setAttribute("x1", prevX);
-                line.setAttribute("y1", prevY);
-                line.setAttribute("x2", x);
-                line.setAttribute("y2", y);
-                line.setAttribute("stroke", "#666");
-                line.setAttribute("stroke-width", branchThickness);
-                glyphSvg.appendChild(line);
-            }
-        }
-        });
-
-        shareGlyphBtn.style.display = 'block';
-        shareLinkDiv.style.display = 'none';
-
-        // Fetch and display glyph statistics
-        const selectedRepo = repoSelect.value;
-        if (selectedRepo) {
-            const [provider, owner, repo] = selectedRepo.split('/');
-            const startDate = startDateInput.value;
-            const endDate = endDateInput.value;
-            fetchGlyphStatistics(provider, owner, repo, startDate, endDate);
-        }
-    }
 
     async function fetchGlyphStatistics(provider, owner, repo, startDate, endDate) {
         let url = `http://localhost:8000/api/glyph-statistics/${provider}/${owner}/${repo}`;
@@ -1305,16 +1028,21 @@ function renderStoryAnnotations(annotations, commits, centerX, centerY, maxRadiu
         const commitDate = event.target.getAttribute('data-commit-date');
         const commitIntent = event.target.getAttribute('data-commit-intent');
         const commitSentiment = event.target.getAttribute('data-commit-sentiment');
+        const commitUrl = event.target.getAttribute('data-commit-url');
+        const authorUrl = event.target.getAttribute('data-author-url');
+        const pullRequestUrl = event.target.getAttribute('data-pull-request-url');
 
         tooltip.innerHTML = `
             <strong>SHA:</strong> ${commitSha.substring(0, 7)}<br>
             <strong>Message:</strong> ${commitMessage}<br>
-            <strong>Author:</strong> ${commitAuthor}<br>
+            <strong>Author:</strong> ${commitAuthor} ${authorUrl ? `<a href="${authorUrl}" target="_blank">(Profile)</a>` : ''}<br>
             <strong>Date:</strong> ${commitDate}<br>
             <strong>Intent:</strong> ${commitIntent}<br>
             <strong>Sentiment:</strong> ${commitSentiment}<br>
             <strong>Additions:</strong> ${event.target.getAttribute('data-commit-additions')}<br>
-            <strong>Deletions:</strong> ${event.target.getAttribute('data-commit-deletions')}
+            <strong>Deletions:</strong> ${event.target.getAttribute('data-commit-deletions')}<br>
+            ${commitUrl ? `<a href="${commitUrl}" target="_blank">View Commit</a>` : ''}
+            ${pullRequestUrl ? `<br><a href="${pullRequestUrl}" target="_blank">View Pull Request</a>` : ''}
         `;
         tooltip.style.display = 'block';
         tooltip.style.left = `${event.pageX + 10}px`;

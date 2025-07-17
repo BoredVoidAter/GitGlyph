@@ -138,6 +138,53 @@ async def logout(request: Request):
     request.session.pop("user_profile", None)
     return {"message": "Logged out successfully"}
 
+@app.get("/api/organizations")
+async def get_organizations(request: Request):
+    if "user" not in request.session:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    
+    provider = request.session.get("provider")
+    access_token = request.session["user"]["access_token"]
+    
+    async with httpx.AsyncClient() as client:
+        if provider == "github":
+            headers = {"Authorization": f"token {access_token}"}
+            response = await client.get("https://api.github.com/user/orgs", headers=headers)
+            response.raise_for_status()
+            orgs = response.json()
+            return [{"id": org["id"], "login": org["login"], "provider": "github"} for org in orgs]
+        elif provider == "gitlab":
+            headers = {"Authorization": f"Bearer {access_token}"}
+            response = await client.get("https://gitlab.com/api/v4/groups?min_access_level=20", headers=headers) # Min_access_level 20 for reporter access
+            response.raise_for_status()
+            orgs = response.json()
+            return [{"id": org["id"], "login": org["full_path"], "provider": "gitlab"} for org in orgs]
+        else:
+            raise HTTPException(status_code=400, detail="Unknown provider")
+
+@app.get("/api/organization/{provider}/{org_id}/repos")
+async def get_organization_repos(provider: str, org_id: str, request: Request):
+    if "user" not in request.session:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    
+    access_token = request.session["user"]["access_token"]
+    
+    async with httpx.AsyncClient() as client:
+        if provider == "github":
+            headers = {"Authorization": f"token {access_token}"}
+            response = await client.get(f"https://api.github.com/orgs/{org_id}/repos?type=all", headers=headers)
+            response.raise_for_status()
+            repos = response.json()
+            return [{"name": repo["name"], "full_name": repo["full_name"], "private": repo["private"], "provider": "github"} for repo in repos]
+        elif provider == "gitlab":
+            headers = {"Authorization": f"Bearer {access_token}"}
+            response = await client.get(f"https://gitlab.com/api/v4/groups/{org_id}/projects?include_subgroups=true", headers=headers)
+            response.raise_for_status()
+            repos = response.json()
+            return [{"name": repo["name"], "full_name": repo["path_with_namespace"], "private": not repo["public"], "provider": "gitlab"} for repo in repos]
+        else:
+            raise HTTPException(status_code=400, detail="Unknown provider")
+
 async def get_repositories(request: Request):
     if "user" not in request.session:
         raise HTTPException(status_code=401, detail="Not authenticated")
@@ -279,20 +326,25 @@ async def get_commits(provider: str, owner: str, repo: str, request: Request, st
                 commits_url = f"https://api.github.com/repos/{owner}/{repo}/commits?sha={branch_name}"
                 if since_sha:
                     commits_url += f"&since={since_sha}" # GitHub API uses 'since' for date, but 'sha' for starting commit
-                if since_sha:
-                    commits_url += f"&since={since_sha}" # GitHub API uses 'since' for date, but 'sha' for starting commit
                 commits_response = await client.get(commits_url, headers=headers)
                 commits_response.raise_for_status()
                 commits = commits_response.json()
                 
                 for commit in commits:
-                    commit_details_url = f"https://api.github.com/repos/{owner}/{repo}/commits/{commit["sha"]}"
+                    commit_details_url = f"https://api.github.com/repos/{owner}/{repo}/commits/{commit['sha']}"
                     commit_details_response = await client.get(commit_details_url, headers=headers)
                     commit_details_response.raise_for_status()
                     commit_details = commit_details_response.json()
 
                     total_additions = sum(f["additions"] for f in commit_details["files"])
                     total_deletions = sum(f["deletions"] for f in commit_details["files"])
+                    
+                    # Construct URLs for commit, author, and (if applicable) pull request
+                    commit_url = commit["html_url"]
+                    author_url = commit["author"]["html_url"] if commit["author"] else None
+                    # GitHub API doesn't directly link PR from commit. Requires searching.
+                    # For simplicity, we'll leave PR URL as None unless explicitly fetched.
+                    pull_request_url = None
 
                     intent_data = analyze_commit_intent(commit["commit"]["message"])
 
@@ -306,7 +358,10 @@ async def get_commits(provider: str, owner: str, repo: str, request: Request, st
                         "total_additions": total_additions,
                         "total_deletions": total_deletions,
                         "intent": intent_data["intent"],
-                        "sentiment": intent_data["sentiment"]
+                        "sentiment": intent_data["sentiment"],
+                        "commit_url": commit_url,
+                        "author_url": author_url,
+                        "pull_request_url": pull_request_url
                     })
         elif provider == "gitlab":
             headers = {"Authorization": f"Bearer {access_token}"}
@@ -333,6 +388,12 @@ async def get_commits(provider: str, owner: str, repo: str, request: Request, st
 
             for commit in commits:
                 intent_data = analyze_commit_intent(commit["message"])
+                
+                # Construct URLs for commit, author, and (if applicable) merge request
+                commit_url = commit["web_url"]
+                author_url = None # GitLab API does not directly provide author profile URL in commit object
+                merge_request_url = None # Similar to GitHub, requires separate API calls to link MRs to commits
+
                 all_commits.append({
                     "sha": commit["id"],
                     "message": commit["message"],
@@ -340,7 +401,10 @@ async def get_commits(provider: str, owner: str, repo: str, request: Request, st
                     "date": commit["created_at"],
                     "branch": "master", # GitLab API for project commits doesn't directly give branch per commit easily without more calls
                     "intent": intent_data["intent"],
-                    "sentiment": intent_data["sentiment"]
+                    "sentiment": intent_data["sentiment"],
+                    "commit_url": commit_url,
+                    "author_url": author_url,
+                    "pull_request_url": merge_request_url # Using pull_request_url for consistency
                 })
         else:
             raise HTTPException(status_code=400, detail="Unknown provider")

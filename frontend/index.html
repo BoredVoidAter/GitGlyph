@@ -20,6 +20,12 @@
             <button id="gitlab-login">Login with GitLab</button>
             <div id="repository-selection" style="display: none;">
                 <h2>Select a Repository</h2>
+                <div class="organization-selection">
+                    <label for="org-select">Select Organization:</label>
+                    <select id="org-select">
+                        <option value="">-- Personal Repos --</option>
+                    </select>
+                </div>
                 <select id="repo-select"></select>
                 <button id="add-repo-to-team" class="small-button">Add to Team Glyph</button>
 
@@ -86,10 +92,18 @@
                 <p>Embed your Glyph: <textarea id="embed-snippet" rows="3" cols="50" readonly></textarea></p>
             </div>
             <div id="glyph-visualization">
-                <h2>Your Glyph</h2>
-                <svg id="glyph-svg" width="800" height="600"></svg>
-                <div id="tooltip" class="tooltip" style="display: none;"></div>
-            </div>
+                    <h2>Your Glyph</h2>
+                    <div class="visualization-controls">
+                        <button id="toggle-3d-view">Toggle 3D View</button>
+                    </div>
+                    <div id="glyph-2d-view">
+                        <svg id="glyph-svg" width="800" height="600"></svg>
+                        <div id="tooltip" class="tooltip" style="display: none;"></div>
+                    </div>
+                    <div id="glyph-3d-view" style="display: none;">
+                        <!-- Three.js canvas will be appended here -->
+                    </div>
+                </div>
         </div>
 
         <div id="gallery-tab" class="tab-content">
@@ -117,6 +131,7 @@
             </div>
         </div>
     </div>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="script.js"></script>
 </body>
 </html>
