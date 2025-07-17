@@ -41,3 +41,37 @@ select {
     border: 1px solid #eee;
     margin-top: 20px;
 }
+
+/* Theme Customization */
+.container.theme-default {
+    background-color: #fff;
+    color: #333;
+}
+
+.container.theme-ocean {
+    background-color: #e0f2f7;
+    color: #01579b;
+}
+
+.container.theme-forest {
+    background-color: #e8f5e9;
+    color: #1b5e20;
+}
+
+.container.theme-sunset {
+    background-color: #fff3e0;
+    color: #e65100;
+}
+
+/* Additional styles for share link */
+#share-link-div {
+    margin-top: 20px;
+    padding: 10px;
+    border: 1px dashed #ccc;
+    border-radius: 5px;
+    background-color: #f9f9f9;
+}
+
+#share-link {
+    word-break: break-all;
+}

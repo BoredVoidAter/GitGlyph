@@ -10,10 +10,24 @@
     <div class="container">
         <h1>GitGlyph</h1>
         <button id="github-login">Login with GitHub</button>
+        <button id="gitlab-login">Login with GitLab</button>
         <div id="repository-selection" style="display: none;">
             <h2>Select a Repository</h2>
             <select id="repo-select"></select>
+            <div class="theme-selection">
+                <label for="theme-select">Select Theme:</label>
+                <select id="theme-select">
+                    <option value="default">Default</option>
+                    <option value="ocean">Ocean Blue</option>
+                    <option value="forest">Forest Green</option>
+                    <option value="sunset">Sunset Orange</option>
+                </select>
+            </div>
             <button id="generate-glyph">Generate Glyph</button>
+            <button id="share-glyph" style="display: none;">Share Glyph</button>
+        </div>
+        <div id="share-link-div" style="display: none;">
+            <p>Share your Glyph: <a id="share-link" href="#" target="_blank"></a></p>
         </div>
         <div id="glyph-visualization">
             <h2>Your Glyph</h2>

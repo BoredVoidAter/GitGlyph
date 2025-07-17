@@ -1,12 +1,21 @@
 document.addEventListener('DOMContentLoaded', () => {
     const githubLoginBtn = document.getElementById('github-login');
+    const gitlabLoginBtn = document.getElementById('gitlab-login');
     const repositorySelectionDiv = document.getElementById('repository-selection');
     const repoSelect = document.getElementById('repo-select');
     const generateGlyphBtn = document.getElementById('generate-glyph');
     const glyphSvg = document.getElementById('glyph-svg');
+    const themeSelect = document.getElementById('theme-select');
+    const shareGlyphBtn = document.getElementById('share-glyph');
+    const shareLinkDiv = document.getElementById('share-link-div');
+    const shareLink = document.getElementById('share-link');
 
     githubLoginBtn.addEventListener('click', () => {
         window.location.href = 'http://localhost:8000/login/github';
+    });
+
+    gitlabLoginBtn.addEventListener('click', () => {
+        window.location.href = 'http://localhost:8000/login/gitlab';
     });
 
     // Check if authenticated and fetch repositories
@@ -16,11 +25,12 @@ document.addEventListener('DOMContentLoaded', () => {
             if (response.ok) {
                 const repos = await response.json();
                 githubLoginBtn.style.display = 'none';
+                gitlabLoginBtn.style.display = 'none';
                 repositorySelectionDiv.style.display = 'block';
                 repos.forEach(repo => {
                     const option = document.createElement('option');
-                    option.value = repo.full_name;
-                    option.textContent = repo.name;
+                    option.value = `${repo.provider}/${repo.full_name}`;
+                    option.textContent = `[${repo.provider.toUpperCase()}] ${repo.full_name}`;
                     repoSelect.appendChild(option);
                 });
             } else {
@@ -35,14 +45,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
     generateGlyphBtn.addEventListener('click', async () => {
         const selectedRepo = repoSelect.value;
+        const selectedTheme = themeSelect.value; // Get selected theme
         if (selectedRepo) {
-            const [owner, repo] = selectedRepo.split('/');
+            const [provider, owner, repo] = selectedRepo.split('/');
             try {
-                const response = await fetch(`http://localhost:8000/api/commits/${owner}/${repo}`);
+                const response = await fetch(`http://localhost:8000/api/commits/${provider}/${owner}/${repo}`);
                 if (response.ok) {
                     const commits = await response.json();
                     console.log('Fetched commits:', commits);
-                    generateAndVisualizeGlyph(commits);
+                    generateAndVisualizeGlyph(commits, selectedTheme); // Pass theme to visualization function
                 } else {
                     console.error('Error fetching commits:', response.status);
                 }
@@ -52,7 +63,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    function generateAndVisualizeGlyph(commits) {
+    function generateAndVisualizeGlyph(commits, theme) {
         // Simple Glyph Generation Algorithm (Placeholder)
         // This is a very basic example. A real algorithm would be much more complex.
 
@@ -68,8 +79,12 @@ document.addEventListener('DOMContentLoaded', () => {
             text.setAttribute("fill", "#888");
             text.textContent = "No commits to display.";
             glyphSvg.appendChild(text);
+            shareGlyphBtn.style.display = 'none';
+            shareLinkDiv.style.display = 'none';
             return;
         }
+
+        applyTheme(theme);
 
         const svgWidth = parseInt(glyphSvg.getAttribute('width'));
         const svgHeight = parseInt(glyphSvg.getAttribute('height'));
@@ -84,7 +99,18 @@ document.addEventListener('DOMContentLoaded', () => {
         const lastCommitDate = new Date(commits[commits.length - 1].date).getTime();
         const totalTimeSpan = lastCommitDate - firstCommitDate;
 
+        // Assign unique colors to contributors
+        const contributors = {};
+        let colorIndex = 0;
+        const colors = ["#FF5733", "#33FF57", "#3357FF", "#FF33F0", "#F0FF33", "#33F0FF"]; // Example colors
+
         commits.forEach((commit, index) => {
+            if (!contributors[commit.author_name]) {
+                contributors[commit.author_name] = colors[colorIndex % colors.length];
+                colorIndex++;
+            }
+            const commitColor = contributors[commit.author_name];
+
             const commitDate = new Date(commit.date).getTime();
             const timeRatio = totalTimeSpan > 0 ? (commitDate - firstCommitDate) / totalTimeSpan : 0;
 
@@ -102,7 +128,7 @@ document.addEventListener('DOMContentLoaded', () => {
             circle.setAttribute("cx", x);
             circle.setAttribute("cy", y);
             circle.setAttribute("r", 3 + (commit.message.length % 5)); // Vary size based on message length
-            circle.setAttribute("fill", `hsl(${index * 10 % 360}, 70%, 50%)`); // Vary color
+            circle.setAttribute("fill", commitColor); // Use contributor color
             circle.setAttribute("stroke", "#333");
             circle.setAttribute("stroke-width", "0.5");
             glyphSvg.appendChild(circle);
@@ -126,5 +152,58 @@ document.addEventListener('DOMContentLoaded', () => {
                 glyphSvg.appendChild(line);
             }
         });
+        shareGlyphBtn.style.display = 'block';
+        shareLinkDiv.style.display = 'none';
+    }
+
+    shareGlyphBtn.addEventListener('click', async () => {
+        const glyphData = glyphSvg.outerHTML;
+        try {
+            const response = await fetch('http://localhost:8000/api/share-glyph', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ glyph_data: glyphData }),
+            });
+            if (response.ok) {
+                const data = await response.json();
+                shareLink.href = data.share_url;
+                shareLink.textContent = data.share_url;
+                shareLinkDiv.style.display = 'block';
+            } else {
+                console.error('Error sharing glyph:', response.status);
+            }
+        } catch (error) {
+            console.error('Error:', error);
+        }
+    });
+
+    // Check if it's a shared glyph page
+    const pathParts = window.location.pathname.split('/');
+    if (pathParts.length === 3 && pathParts[1] === 'glyph') {
+        const shareId = pathParts[2];
+        // Hide login and repo selection
+        githubLoginBtn.style.display = 'none';
+        gitlabLoginBtn.style.display = 'none';
+        repositorySelectionDiv.style.display = 'none';
+        shareGlyphBtn.style.display = 'none';
+
+        async function fetchSharedGlyph() {
+            try {
+                const response = await fetch(`http://localhost:8000/api/glyph/${shareId}`);
+                if (response.ok) {
+                    const data = await response.json();
+                    glyphSvg.innerHTML = data;
+                } else {
+                    console.error('Error fetching shared glyph:', response.status);
+                    glyphSvg.innerHTML = '<text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" fill="#888">Glyph not found or expired.</text>';
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                glyphSvg.innerHTML = '<text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" fill="#888">Error loading glyph.</text>';
+            }
+        }
+        fetchSharedGlyph();
     }
 });
