@@ -1,137 +1,25 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GitGlyph</title>
-    <link rel="stylesheet" href="style.css">
-</head>
-<body>
-    <div class="container">
-        <h1>GitGlyph</h1>
-        <div class="tabs">
-            <button class="tab-button active" data-tab="generate">Generate Glyph</button>
-            <button class="tab-button" data-tab="gallery">Glyph Gallery</button>
-            <button class="tab-button" data-tab="achievements">My Achievements</button>
-        </div>
 
-        <div id="generate-tab" class="tab-content active">
-            <button id="github-login">Login with GitHub</button>
-            <button id="gitlab-login">Login with GitLab</button>
-            <div id="repository-selection" style="display: none;">
-                <h2>Select a Repository</h2>
-                <div class="organization-selection">
-                    <label for="org-select">Select Organization:</label>
-                    <select id="org-select">
-                        <option value="">-- Personal Repos --</option>
-                    </select>
-                </div>
-                <select id="repo-select"></select>
-                <button id="add-repo-to-team" class="small-button">Add to Team Glyph</button>
-
-                <div id="team-repo-selection" style="display: none;">
-                    <h3>Team Glyph Repositories:</h3>
-                    <ul id="selected-team-repos"></ul>
-                    <button id="generate-team-glyph">Generate Team Glyph</button>
-                </div>
-
-                <div class="theme-selection">
-                    <label for="theme-select">Select Theme:</label>
-                    <select id="theme-select">
-                        <option value="default">Default</option>
-                        <option value="ocean">Ocean Blue</option>
-                        <option value="forest">Forest Green</option>
-                        <option value="sunset">Sunset Orange</option>
-                    </select>
-                </div>
-                
-                <div class="aesthetic-controls">
-                    <h3>Aesthetic Controls</h3>
-                    <label for="branch-thickness">Branch Thickness:</label>
-                    <input type="range" id="branch-thickness" min="0.5" max="5" step="0.1" value="1">
-
-                    <label for="node-size">Commit Node Size:</label>
-                    <input type="range" id="node-size" min="1" max="10" step="0.5" value="3">
-
-                    <label for="animation-speed">Animation Speed:</label>
-                    <input type="range" id="animation-speed" min="0.1" max="2" step="0.1" value="1">
-
-                </div>
-
-                <div class="date-range-selection">
-                    <label for="start-date">Start Date:</label>
-                    <input type="date" id="start-date">
-                    <label for="end-date">End Date:</label>
-                    <input type="date" id="end-date">
-                </div>
-                <button id="generate-glyph">Generate Glyph</button>
-                <button id="share-glyph" style="display: none;">Share Glyph</button>
-                <button id="export-png" style="display: none;">Export as PNG</button>
-
-                <div class="story-annotations-section">
-                    <h3>Story Annotations</h3>
-                    <div id="annotation-form">
-                        <label for="annotation-commit-sha">Commit SHA (first 7 chars):</label>
-                        <input type="text" id="annotation-commit-sha" placeholder="e.g., a1b2c3d">
-                        <label for="annotation-title">Title:</label>
-                        <input type="text" id="annotation-title" placeholder="e.g., Version 1.0 Launch">
-                        <label for="annotation-description">Description:</label>
-                        <textarea id="annotation-description" rows="3" placeholder="e.g., Initial public release of the platform."></textarea>
-                        <label for="annotation-date">Date (optional, for timeline placement):</label>
-                        <input type="date" id="annotation-date">
-                        <button id="add-annotation-btn">Add Annotation</button>
-                    </div>
-                    <div id="current-annotations">
-                        <h4>Added Annotations:</h4>
-                        <ul id="annotations-list"></ul>
-                    </div>
-                </div>
+        <div id="collections-tab" class="tab-content">
+            <h2>My Glyph Collections</h2>
+            <div class="collection-creation">
+                <h3>Create New Collection</h3>
+                <label for="collection-name">Collection Name:</label>
+                <input type="text" id="collection-name" placeholder="e.g., My Open Source Work">
+                <label for="collection-description">Description:</label>
+                <textarea id="collection-description" rows="3" placeholder="e.g., A collection of my open source contributions."></textarea>
+                <button id="create-collection-btn">Create Collection</button>
             </div>
-            <div id="share-link-div" style="display: none;">
-                <p>Share your Glyph: <a id="share-link" href="#" target="_blank"></a></p>
-                <p>Embed your Glyph: <textarea id="embed-snippet" rows="3" cols="50" readonly></textarea></p>
+            <div class="collection-list">
+                <h3>Your Collections</h3>
+                <ul id="user-collections-list"></ul>
             </div>
-            <div id="glyph-visualization">
-                    <h2>Your Glyph</h2>
-                    <div class="visualization-controls">
-                        <button id="toggle-3d-view">Toggle 3D View</button>
-                    </div>
-                    <div id="glyph-2d-view">
-                        <svg id="glyph-svg" width="800" height="600"></svg>
-                        <div id="tooltip" class="tooltip" style="display: none;"></div>
-                    </div>
-                    <div id="glyph-3d-view" style="display: none;">
-                        <!-- Three.js canvas will be appended here -->
-                    </div>
+            <div id="add-to-collection-modal" class="modal">
+                <div class="modal-content">
+                    <span class="close-button">&times;</span>
+                    <h4>Add Snapshot to Collection</h4>
+                    <p>Select a collection to add the current glyph snapshot to:</p>
+                    <select id="collections-dropdown"></select>
+                    <button id="add-snapshot-to-selected-collection-btn">Add to Collection</button>
                 </div>
-        </div>
-
-        <div id="gallery-tab" class="tab-content">
-            <h2>Community Glyph Gallery</h2>
-            <div class="gallery-controls">
-                <label for="gallery-sort">Sort By:</label>
-                <select id="gallery-sort">
-                    <option value="recent">Most Recent</option>
-                    <option value="trending">Trending</option>
-                    <option value="complex">Most Complex</option>
-                </select>
-                <label for="gallery-filter-tag">Filter by Tag:</label>
-                <input type="text" id="gallery-filter-tag" placeholder="e.g., feature, bug_fix">
-                <button id="apply-gallery-filters">Apply Filters</button>
-            </div>
-            <div id="gallery-list">
-                <!-- Glyphs will be loaded here -->
             </div>
         </div>
-
-        <div id="achievements-tab" class="tab-content">
-            <h2>My Achievements</h2>
-            <div id="achievements-list">
-                <!-- Achievements will be loaded here -->
-            </div>
-        </div>
-    </div>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    <script src="script.js"></script>
-</body>
-</html>
