@@ -23,3 +23,56 @@
                 </div>
             </div>
         </div>
+
+        <div id="notifications-tab" class="tab-content">
+            <h2>Weekly Digest & Project Pulse Notifications</h2>
+            <div class="notification-settings">
+                <h3>Notification Settings</h3>
+                <label for="notification-email">Email for Digests:</label>
+                <input type="email" id="notification-email" placeholder="your_email@example.com">
+                <button id="save-notification-settings-btn">Save Settings</button>
+                <button id="send-test-digest-btn">Send Test Digest</button>
+            </div>
+        </div>
+
+        <div id="mashup-tab" class="tab-content">
+            <h2>Glyph 'Mashup' Creator</h2>
+            <div class="mashup-creator">
+                <h3>Create a New Mashup Glyph</h3>
+                <label for="structure-repo">Repository for Structure:</label>
+                <select id="structure-repo"></select>
+                <label for="style-repo">Repository for Style:</label>
+                <select id="style-repo"></select>
+                <button id="generate-mashup-btn">Generate Mashup Glyph</button>
+                <div class="mashup-display">
+                    <h3>Generated Mashup</h3>
+                    <div id="mashup-glyph-container"></div>
+                </div>
+            </div>
+        </div>
+
+        <div id="goals-tab" class="tab-content">
+            <h2>User-Defined Project Goals & Milestone Tracking</h2>
+            <div class="goal-creation">
+                <h3>Create New Project Goal</h3>
+                <label for="goal-collection">Select Collection:</label>
+                <select id="goal-collection"></select>
+                <label for="goal-name">Goal Name:</label>
+                <input type="text" id="goal-name" placeholder="e.g., Launch V2 by October">
+                <label for="goal-description">Description:</label>
+                <textarea id="goal-description" rows="3" placeholder="e.g., Refactor Auth Module and add new user features."></textarea>
+                <label for="goal-target-date">Target Date:</label>
+                <input type="date" id="goal-target-date">
+                <label for="goal-keywords">Keywords (comma-separated):</label>
+                <input type="text" id="goal-keywords" placeholder="e.g., auth, refactor, user, feature">
+                <button id="create-goal-btn">Create Goal</button>
+            </div>
+            <div class="goal-list">
+                <h3>Your Project Goals</h3>
+                <ul id="user-goals-list"></ul>
+            </div>
+        </div>
+    </div>
+    <script src="script.js"></script>
+</body>
+</html>

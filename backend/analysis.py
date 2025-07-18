@@ -35,20 +35,26 @@ def analyze_glyph_health(repo_path):
     Main function to analyze the health of a Glyph based on its repository.
     This will eventually interact with GitPython to get actual commit data.
     """
-    # In a real scenario, you'd use GitPython to get commit history
-    # For now, we'll use dummy data
-    dummy_commit_history = [
-        "feat: Add new user profile page",
-        "fix: Correct typo in README",
-        "feat: Implement dark mode toggle",
-        "chore: Update dependencies",
-        "fix: Resolve login issue",
-        "feat: Add search functionality"
-    ]
+    from git import Repo, exc
+    
+    commit_history = []
+    try:
+        repo = Repo(repo_path)
+        for commit in repo.iter_commits():
+            commit_history.append(commit.message)
+    except exc.InvalidGitRepositoryError:
+        print(f"Error: {repo_path} is not a valid Git repository.")
+        return {
+            "feature_to_fix_ratio": 0.0,
+            "code_churn_volatility": 0.0,
+            "commit_cadence": 0.0,
+            "stability_graph_data": [],
+            "development_tempo_data": []
+        }
 
-    feature_to_fix = calculate_feature_to_fix_ratio(dummy_commit_history)
-    churn_volatility = calculate_code_churn_volatility(dummy_commit_history)
-    commit_rhythm = calculate_commit_cadence(dummy_commit_history)
+    feature_to_fix = calculate_feature_to_fix_ratio(commit_history)
+    churn_volatility = calculate_code_churn_volatility(commit_history)
+    commit_rhythm = calculate_commit_cadence(commit_history)
 
     return {
         "feature_to_fix_ratio": feature_to_fix,
