@@ -1,8 +1,8 @@
 
-from fastapi import FastAPI
+from fastapi import FastAPI, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
-from fastapi import HTTPException, Request
+from fastapi.responses import StreamingResponse, JSONResponse
+from fastapi import HTTPException, Request, Depends
 from pydantic import BaseModel
 from datetime import datetime
 from typing import List, Dict, Optional
@@ -12,12 +12,29 @@ from dotenv import load_dotenv
 from git import Repo, exc
 import svgwrite
 
+from backend.generate_glyph import generate_glyph
+from backend.analysis import analyze_glyph_health
+
 load_dotenv()
+
+class GlyphHealthMetrics(BaseModel):
+    feature_to_fix_ratio: float
+    code_churn_volatility: float
+    commit_cadence: float
+    stability_graph_data: List[float]
+    development_tempo_data: List[float]
 
 class GlyphSnapshot(BaseModel):
     timestamp: datetime
     commit_hash: str
     svg_content: str
+    health_metrics: Optional[GlyphHealthMetrics] = None
+
+class GlyphData(BaseModel):
+    svg_content: str
+    health_metrics: GlyphHealthMetrics
+    # Add other relevant data points like coordinates, colors, animation timings
+    # For now, we'll keep it simple with just SVG and health metrics
 
 class GlyphCollection(BaseModel):
     id: str
@@ -26,11 +43,31 @@ class GlyphCollection(BaseModel):
     description: Optional[str] = None
     created_at: datetime
     snapshots: List[GlyphSnapshot] = []
+    is_public: bool = False # New field for public API
 
 app = FastAPI()
 
-# In-memory storage for glyph collections (for demonstration purposes)
+# In-memory storage for glyph collections and generated glyph data
 glyph_collections: Dict[str, GlyphCollection] = {}
+generated_glyphs: Dict[str, GlyphData] = {} # Stores the latest generated glyph data by collection_id
+
+# Simple API Key storage (for demonstration)
+API_KEYS = {"test_api_key": "user123"} # In a real app, this would be a database
+
+def get_api_key(request: Request):
+    api_key = request.headers.get("X-API-Key")
+    if not api_key or api_key not in API_KEYS:
+        raise HTTPException(status_code=403, detail="Could not validate API Key")
+    return api_key
+
+# Configure CORS
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173"],  # Allow your frontend origin
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"]
+)
 
 # Configure CORS
 app.add_middleware(

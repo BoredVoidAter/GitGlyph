@@ -1,5 +1,6 @@
 
 import os
+from backend.analysis import analyze_glyph_health
 
 def generate_glyph(repo_path, output_path):
     """
@@ -9,9 +10,15 @@ def generate_glyph(repo_path, output_path):
     """
     print(f"Generating Glyph for repository: {repo_path}")
     # Simulate creating a dummy SVG file
+    svg_content = '<svg width="100" height="100"><rect width="100" height="100" style="fill:rgb(0,0,255);" /></svg>'
     with open(output_path, "w") as f:
-        f.write('<svg width="100" height="100"><rect width="100" height="100" style="fill:rgb(0,0,255);" /></svg>')
+        f.write(svg_content)
     print(f"Dummy Glyph saved to {output_path}")
+
+    # Analyze glyph health
+    health_metrics = analyze_glyph_health(repo_path)
+
+    return svg_content, health_metrics
 
 if __name__ == "__main__":
     # This would typically be run by the GitHub Action
@@ -20,4 +27,5 @@ if __name__ == "__main__":
     output_dir = os.path.join(repo_path, "glyphs")
     os.makedirs(output_dir, exist_ok=True)
     output_file = os.path.join(output_dir, "latest_glyph.svg")
-    generate_glyph(repo_path, output_file)
+    svg_content, health_metrics = generate_glyph(repo_path, output_file)
+    print("Generated Glyph SVG content and Health Metrics.")
