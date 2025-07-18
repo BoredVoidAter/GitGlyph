@@ -18,6 +18,7 @@ from authlib.integrations.starlette_client import OAuth
 from backend.notifications import send_weekly_digest
 from backend.generate_mashup_glyph import generate_mashup_glyph
 from backend.nlp_analysis import analyze_commit_for_goal_progress
+from backend.contributor_analysis import analyze_contributor_collaboration
 
 load_dotenv()
 
@@ -379,3 +380,19 @@ async def track_goal_progress(goal_id: str, request: Request, commit_messages: L
     project_goals[goal_id] = goal
     
     return {"message": "Goal progress updated successfully", "goal": goal}
+
+@app.get("/api/contributor-constellation")
+async def get_contributor_constellation(repo_path: str, request: Request):
+    if "user" not in request.session:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    
+    # In a real application, validate repo_path against user's linked repositories
+    # and ensure it's a safe path. For now, we'll assume it's a valid, accessible path.
+    if not os.path.exists(repo_path) or not os.path.isdir(repo_path):
+        raise HTTPException(status_code=400, detail="Invalid repository path provided.")
+    
+    try:
+        constellation_data = analyze_contributor_collaboration(repo_path)
+        return constellation_data
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error analyzing repository: {e}")

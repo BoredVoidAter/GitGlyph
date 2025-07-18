@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Contributor Constellation</title>
+    <link rel="stylesheet" href="style.css">
+    <style>
+        #constellation-container {
+            width: 100%;
+            height: 800px;
+            border: 1px solid #ccc;
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>Contributor Constellation View</h1>
+        <nav>
+            <a href="index.html">Back to Glyph</a>
+        </nav>
+    </header>
+    <main>
+        <section>
+            <p>Visualize the collaboration network of your project's contributors.</p>
+            <div class="input-group">
+                <label for="repoPath">Git Repository Path:</label>
+                <input type="text" id="repoPath" placeholder="e.g., C:/Users/YourUser/Projects/YourRepo">
+                <button id="loadConstellation">Load Constellation</button>
+            </div>
+            <div id="constellation-container"></div>
+        </section>
+    </main>
+    <footer>
+        <p>&copy; 2025 GitGlyph</p>
+    </footer>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <script src="contributor_constellation.js"></script>
+</body>
+</html>
