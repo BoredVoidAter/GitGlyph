@@ -1,0 +1,42 @@
+name: PR Glyph Diff Preview
+
+on: pull_request
+
+jobs:
+  generate-diff-preview:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0 # Fetch all history for diff generation
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.x'
+
+      - name: Install dependencies
+        run: pip install -r backend/requirements.txt
+
+      - name: Generate Glyph Diff
+        run: python backend/generate_glyph_diff.py
+        env:
+          GITHUB_BASE_REF: ${{ github.base_ref }}
+          GITHUB_HEAD_REF: ${{ github.head_ref }}
+
+      - name: Upload Glyph Diff as artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: glyph-diff
+          path: glyphs/pr_glyph_diff.svg
+
+      - name: Add Glyph Diff to PR comment
+        uses: peter-evans/create-or-update-comment@v3
+        with:
+          issue-number: ${{ github.event.pull_request.number }}
+          body: |
+            ## GitGlyph Diff Preview
+            <img src="https://github.com/${{ github.repository }}/assets/${{ github.event.pull_request.head.sha }}/pr_glyph_diff.svg" alt="Glyph Diff" width="400"/>
+            
+            _This is an automated Glyph Diff preview. The actual image will be available as an artifact and can be embedded directly once the PR is merged._
